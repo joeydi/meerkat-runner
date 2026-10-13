@@ -292,15 +292,19 @@ struct KeyPress: Sendable, Equatable {
 struct KeyEventMonitor: NSViewRepresentable {
     /// Return true when the key press was handled (the event is then swallowed).
     let handler: @MainActor (KeyPress) -> Bool
+    /// Told the hosting window when it changes (the menu registers it with `MenuBarToggle`).
+    var onWindow: (@MainActor (NSWindow?) -> Void)?
 
     func makeNSView(context: Context) -> MonitorView {
         let view = MonitorView()
         view.handler = handler
+        view.onWindow = onWindow
         return view
     }
 
     func updateNSView(_ view: MonitorView, context: Context) {
         view.handler = handler
+        view.onWindow = onWindow
     }
 
     static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
@@ -309,10 +313,12 @@ struct KeyEventMonitor: NSViewRepresentable {
 
     final class MonitorView: NSView {
         var handler: (@MainActor (KeyPress) -> Bool)?
+        var onWindow: (@MainActor (NSWindow?) -> Void)?
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            onWindow?(window)
             removeMonitor()
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in

@@ -55,7 +55,7 @@ struct MenuView: View {
             footer
         }
         .frame(width: Tokens.popoverWidth)
-        .background(KeyEventMonitor { handleKey($0) })
+        .background(KeyEventMonitor(handler: { handleKey($0) }, onWindow: { MenuBarToggle.menuWindow = $0 }))
         // A focused control that disappears (stopped, filtered away, disabled) hands focus to its
         // nearest neighbour so Tab and Return keep working.
         .onChange(of: focusOrder) { previous, current in
@@ -290,7 +290,7 @@ struct MenuView: View {
         case .activate:
             let target = focus
             if MenuNavigation.activationLeavesMenu(target, projectState: selectedProject?.state) {
-                closeMenu(windowNumber: press.windowNumber)
+                MenuBarToggle.closeIfOpen()
             }
             activate(target, project: selectedProject, listener: selectedListener)
         case .stop:
@@ -301,7 +301,7 @@ struct MenuView: View {
             actions.restart(selectedProject)
         case .logs:
             guard let selectedProject else { return false }
-            closeMenu(windowNumber: press.windowNumber)
+            MenuBarToggle.closeIfOpen()
             actions.showLogs(selectedProject)
         case .copyURL:
             if let port = selectedProject?.project.port ?? selectedListener?.port {
@@ -310,7 +310,7 @@ struct MenuView: View {
                 return false
             }
         case .settings:
-            closeMenu(windowNumber: press.windowNumber)
+            MenuBarToggle.closeIfOpen()
             openSettingsWindow()
         case .clearFilter:
             filter = ""
@@ -352,13 +352,6 @@ struct MenuView: View {
                 Task { await registry.stopAllManaged() }
             }
         }
-    }
-
-    /// Closes the dropdown before a keyboard action takes you elsewhere, as choosing a menu item would.
-    /// Done first, while the menu is certainly open: clicking the status item toggles it.
-    private func closeMenu(windowNumber: Int) {
-        guard NSApp.window(withWindowNumber: windowNumber)?.isVisible == true else { return }
-        MenuBarToggle.toggle()
     }
 
     private func openSettingsWindow() {

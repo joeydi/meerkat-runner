@@ -56,22 +56,44 @@ enum WindowID {
     static let settings = "com_apple_SwiftUI_Settings_window"
 }
 
-/// Brings a window Runner just opened in front of the app you were using. On macOS 14+
-/// `NSApp.activate()` is only a request, and a menu bar app that isn't already active can be
-/// refused, which left windows (notably Settings) opening behind the frontmost app.
+/// Brings a window Runner just opened in front of the app you were using, focused.
+///
+/// Two things fought this: on macOS 14+ `NSApp.activate()` is only a request that a menu bar app
+/// can be refused, and closing the dropdown hands focus back to the previous app. So the menu is
+/// closed first, Runner activates with the (deprecated, but still effective) ignoring-other-apps
+/// call, and the raise is retried briefly until the window is actually key. Runner stays
+/// Dock-less (AGENTS.md §7; owner's choice).
 @MainActor
 enum WindowFront {
+    static let attempts = 5
+    static let interval = 0.1
+
     /// `id` is a `WindowID`; SwiftUI window identifiers start with it (e.g. `logs-AppWindow-2`).
     static func raise(_ id: String) {
-        // The window exists once SwiftUI has processed the open request.
-        DispatchQueue.main.async {
-            guard let window = NSApp.orderedWindows.first(where: {
+        MenuBarToggle.closeIfOpen()
+        attempt(id, remaining: attempts)
+    }
+
+    private static func attempt(_ id: String, remaining: Int) {
+        // Each try waits for SwiftUI to create the window and for the menu's close to settle.
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+            let window = NSApp.orderedWindows.first {
                 $0.isVisible && ($0.identifier?.rawValue.hasPrefix(id) ?? false)
-            }) else { return }
-            window.orderFrontRegardless()
-            window.makeKey()
-            NSApp.activate()
+            }
+            if let window {
+                activate()
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                if window.isKeyWindow, NSApp.isActive { return }
+            }
+            if remaining > 1 { attempt(id, remaining: remaining - 1) }
         }
+    }
+
+    /// The one place Runner forces activation. `NSApp.activate()` alone is refused too often for a
+    /// menu bar app with no Dock icon.
+    private static func activate() {
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

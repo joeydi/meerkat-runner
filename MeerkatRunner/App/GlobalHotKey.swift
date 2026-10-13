@@ -175,6 +175,10 @@ final class HotKeyCenter {
 /// API for this, so it clicks the status item's button.
 @MainActor
 enum MenuBarToggle {
+    /// The dropdown's window, registered by the menu so a window Runner opens can close it first.
+    static weak var menuWindow: NSWindow?
+    private static var lastClose = Date.distantPast
+
     static func toggle() {
         for window in NSApp.windows where String(describing: type(of: window)).contains("NSStatusBarWindow") {
             if let button = statusButton(in: window.contentView) {
@@ -182,6 +186,16 @@ enum MenuBarToggle {
                 return
             }
         }
+    }
+
+    /// Closes the dropdown if it's showing. When a MenuBarExtra closes, macOS hands focus back to the
+    /// app you were in, so this has to happen before a Runner window takes focus, not after (a click
+    /// on the new window would otherwise close the menu and give focus away again).
+    static func closeIfOpen() {
+        // A close a moment ago may still be animating out; toggling again would reopen the menu.
+        guard menuWindow?.isVisible == true, Date.now.timeIntervalSince(lastClose) > 0.5 else { return }
+        lastClose = .now
+        toggle()
     }
 
     private static func statusButton(in view: NSView?) -> NSStatusBarButton? {
