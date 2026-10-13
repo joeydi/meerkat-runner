@@ -3,7 +3,7 @@
 # The generated MeerkatRunner.xcodeproj is git-ignored; edit this file instead.
 name: MeerkatRunner
 options:
-  bundleIdPrefix: us.simplecreature
+  bundleIdPrefix: us.okayplus
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -32,8 +32,8 @@ targets:
       - path: App
     settings:
       base:
-        # TODO(AGENTS.md §13 Q3): confirm bundle ID and Developer ID team.
-        PRODUCT_BUNDLE_IDENTIFIER: us.simplecreature.meerkat-runner
+        # TODO(AGENTS.md §13 Q3): Developer ID team.
+        PRODUCT_BUNDLE_IDENTIFIER: us.okayplus.meerkat-runner
         PRODUCT_NAME: Meerkat Runner
         INFOPLIST_FILE: App/Info.plist
         GENERATE_INFOPLIST_FILE: NO

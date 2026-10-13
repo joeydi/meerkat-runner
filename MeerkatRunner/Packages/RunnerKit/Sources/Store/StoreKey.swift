@@ -13,7 +13,7 @@ public protocol StoreKeyProvider: Sendable {
 
 /// Random 32-byte key in the login Keychain, created on first launch (AGENTS.md §3).
 public struct KeychainStoreKey: StoreKeyProvider {
-    public static let service = "us.simplecreature.meerkat-runner.store"
+    public static let service = "us.okayplus.meerkat-runner.store"
     public static let account = "projects-hmac"
 
     public init() {}

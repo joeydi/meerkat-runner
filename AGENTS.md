@@ -169,7 +169,7 @@ The **registry** exposes a single `@Observable` model the UI renders:
 - Location: `~/Library/Application Support/MeerkatRunner/projects.json`, file mode `0600`, directory `0700`.
 - Logs: `~/Library/Logs/MeerkatRunner/<project-id>.log`, rotated at 5 MB, keep 3.
 - Runtime state (PGIDs Runner launched, for re-adoption after relaunch): `~/Library/Application Support/MeerkatRunner/runtime.json`.
-- **Integrity:** the store is a JSON envelope `{ version, projects, mac }` where `mac` is HMAC-SHA256 over the canonical encoding of `projects`, keyed by a random 32-byte key in the Keychain (`kSecClassGenericPassword`, service `us.simplecreature.meerkat-runner.store`, created on first launch). On load, a bad or missing MAC → load projects but mark **every** approval invalid (force re-approval) and show a one-time warning. This is tamper-*evidence*, not tamper-proofing; say so in code comments.
+- **Integrity:** the store is a JSON envelope `{ version, projects, mac }` where `mac` is HMAC-SHA256 over the canonical encoding of `projects`, keyed by a random 32-byte key in the Keychain (`kSecClassGenericPassword`, service `us.okayplus.meerkat-runner.store`, created on first launch). On load, a bad or missing MAC → load projects but mark **every** approval invalid (force re-approval) and show a one-time warning. This is tamper-*evidence*, not tamper-proofing; say so in code comments.
 - Writes are atomic (`Data.write(options: .atomic)`), then `chmod 0600`.
 
 ---
@@ -479,7 +479,7 @@ Docker Compose port → project mapping (read-only: query the Docker socket for 
 - Notarize: `xcrun notarytool submit <zip> --keychain-profile <profile> --wait`, then `xcrun stapler staple`.
 - Updates: Sparkle 2 with EdDSA-signed appcast over HTTPS. `SUPublicEDKey` in `Info.plist`. Private key never in the repo.
 - `Scripts/release.sh` does archive → export → notarize → staple → DMG/zip → `generate_appcast`.
-- Bundle ID: `us.simplecreature.meerkat-runner` (confirm, §13).
+- Bundle ID: `us.okayplus.meerkat-runner` (confirmed). Developer ID team still open (§13).
 - CI (GitHub Actions, macOS runner): `swift test`, `xcodebuild build`, SwiftLint/SwiftFormat check. Signing and notarization run locally only.
 
 ### Code conventions
@@ -488,7 +488,7 @@ Docker Compose port → project mapping (read-only: query the Docker socket for 
 - Unsafe libproc/posix calls live only in `CProcInfo`, `ProcInfo` and `Supervisor`; every `Unsafe*` buffer has an explicit size check.
 - No third-party dependencies except Sparkle. Ask before adding any.
 - Errors are typed enums per module; user-facing messages are written in the view layer.
-- Log with `os.Logger` (subsystem `us.simplecreature.meerkat-runner`). Paths are `.private` by default; commands and env are never logged.
+- Log with `os.Logger` (subsystem `us.okayplus.meerkat-runner`). Paths are `.private` by default; commands and env are never logged.
 
 ---
 
@@ -496,7 +496,7 @@ Docker Compose port → project mapping (read-only: query the Docker socket for 
 
 1. Pricing: free vs $4.99 one-time. Don't build licensing either way.
 2. Re-approval keyboard default: is "Return does nothing, Esc = Don't Run" right, or should Return = Don't Run?
-3. Bundle ID and Developer ID team.
+3. Developer ID team (bundle ID confirmed: `us.okayplus.meerkat-runner`).
 4. Meerkat waitlist URL for the footer and empty state.
 5. Whether to hash referenced local script files (e.g. `scripts/setup.js`) into the fingerprint in v0.2 or defer.
 
