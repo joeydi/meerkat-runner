@@ -76,6 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Hosting unit tests: don't scan, touch the Keychain or capture the shell environment.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         crashNotifier.install()
+        // Global shortcut to open the menu (§7); none until the user records one in Settings.
+        HotKeyCenter.shared.onPress = { MenuBarToggle.toggle() }
+        try? HotKeyCenter.shared.register(HotKey.load())
         registry.onCrash = { [crashNotifier] project, exitCode in
             crashNotifier.post(project: project, exitCode: exitCode)
         }

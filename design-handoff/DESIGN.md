@@ -234,7 +234,7 @@ When it's opened from an auto-start notification, the primary button reads "Appr
 **Log window.** A `Window` per project, titled `<name> — Logs`, default 720 × 440, resizable. Toolbar: search field, "Copy All (Redacted)", "Clear", "Reveal Log File". Content: monospace 12 pt, ANSI colours mapped to the system palette, line height 1.35, text selectable. Auto-scrolls unless the user has scrolled up, in which case a "Jump to latest" pill appears bottom-centre. For terminal-started servers: centred `.secondary` text, "This server was started in Terminal, so its output is there. Restart it in Runner to see logs here." with a Restart in Runner button.
 
 **Settings.** A standard `Settings` scene with tabs:
-- **General:** Launch at login · On quit (Stop managed servers / Leave running / Ask) · Hide system listeners · Show port count in menu bar.
+- **General:** Launch at login · On quit (Stop managed servers / Leave running / Ask) · Hide system listeners · Hide app listeners · Show port count in menu bar · **Open menu** shortcut recorder (a button showing the shortcut in monospace, or "Record Shortcut"; while recording it reads "Type shortcut…"; a small ⓧ removes it; refusals such as "Include ⌘, ⌥ or ⌃." or "⌘Space is already used by another app." show below in warning colour). Default: no shortcut.
 - **Environment:** a read-only view of the captured PATH (monospace, selectable) · "Reload Shell Environment" button with a last-loaded timestamp.
 - **About:** app icon, version, "Made by Meerkat" link, Acknowledgements.
 
