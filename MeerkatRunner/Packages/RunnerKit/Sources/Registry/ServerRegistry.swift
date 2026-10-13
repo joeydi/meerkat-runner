@@ -16,23 +16,41 @@ public final class ServerRegistry {
     public private(set) var otherListeners: [ListenerGroup] = []
     /// Set when the store's MAC failed and approvals were cleared; the UI shows a one-time warning.
     public private(set) var storeIntegrityWarning = false
-    /// Settings: hide `SystemListeners` from Other listeners.
-    public var hideSystemListeners = true
+    /// Settings: hide `SystemListeners` from Other listeners. Persisted.
+    public var hideSystemListeners: Bool {
+        didSet { defaults.set(hideSystemListeners, forKey: Keys.hideSystemListeners) }
+    }
+
+    /// Settings: hide listeners owned by desktop apps (`AppListeners`). Persisted.
+    public var hideAppListeners: Bool {
+        didSet { defaults.set(hideAppListeners, forKey: Keys.hideAppListeners) }
+    }
 
     private let scanner: PortScanner
     private let store: ProjectStore
     private let supervisor: ProcessSupervisor
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private let defaults: UserDefaults
     private let logger = RunnerLog.logger(category: "registry")
+
+    enum Keys {
+        static let hideSystemListeners = "hideSystemListeners"
+        static let hideAppListeners = "hideAppListeners"
+    }
 
     public init(
         scanner: PortScanner = PortScanner(),
         store: ProjectStore = ProjectStore(),
-        supervisor: ProcessSupervisor = ProcessSupervisor()
+        supervisor: ProcessSupervisor = ProcessSupervisor(),
+        defaults: UserDefaults = .standard
     ) {
         self.scanner = scanner
         self.store = store
         self.supervisor = supervisor
+        self.defaults = defaults
+        // Both default to on.
+        hideSystemListeners = defaults.object(forKey: Keys.hideSystemListeners) as? Bool ?? true
+        hideAppListeners = defaults.object(forKey: Keys.hideAppListeners) as? Bool ?? true
     }
 
     // MARK: - Derived
@@ -54,10 +72,13 @@ public final class ServerRegistry {
         }
     }
 
-    /// Other listeners after the "Hide system listeners" setting, sorted by port.
+    /// Other listeners after the "Hide system listeners" / "Hide app listeners" settings, sorted by port.
     public var visibleOtherListeners: [ListenerGroup] {
-        guard hideSystemListeners else { return otherListeners }
-        return otherListeners.filter { !SystemListeners.isSystemListener($0.primary) }
+        otherListeners.filter { group in
+            if hideSystemListeners, SystemListeners.isSystemListener(group.primary) { return false }
+            if hideAppListeners, AppListeners.isAppListener(group.primary) { return false }
+            return true
+        }
     }
 
     /// Menu bar badge: running count (hidden at 0).

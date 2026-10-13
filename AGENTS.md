@@ -215,6 +215,8 @@ Map argv/executable to a framework label: `next dev` → Next.js, `vite` → Vit
 
 **Known system listeners** owned by the user should be hidden from "Other listeners" by default (toggle in Settings): `ControlCenter` (AirPlay Receiver on 5000 and 7000), `rapportd`, `sharingd`, `identityservicesd`, and similar. Keep this as a data table.
 
+**App listeners** (desktop apps such as Dropbox, Adobe, Raycast, editor helpers) are hidden from "Other listeners" by default too (separate Settings toggle): any listener whose executable is inside a `.app` bundle, unless that bundle is nested in a `.framework` (python.org/Homebrew Python run from `Python.framework/…/Python.app`) or is on a keep-list of dev-server apps (Postgres.app, DBngin, Herd, Docker, OrbStack, Rancher Desktop). Keep the keep-list as a data table.
+
 ---
 
 ## 5. Detection (Add server from folder)
@@ -339,7 +341,7 @@ Exit with a non-zero code within 10 s of start, or any unexpected exit → state
 - `Info.plist`: `LSUIElement = YES`, `LSMinimumSystemVersion = 14.0`.
 - Launch at login: `SMAppService.mainApp.register()/unregister()` from Settings.
 - Global hotkey to open the menu (v0.3): user-configurable; default none.
-- Settings window: General (launch at login, on quit, hide system listeners, poll intervals), Environment (reload shell env, show captured PATH), About (version, "Made by Meerkat" link → `[MEERKAT WAITLIST URL]`).
+- Settings window: General (launch at login, on quit, hide system listeners, hide app listeners, poll intervals), Environment (reload shell env, show captured PATH), About (version, "Made by Meerkat" link → `[MEERKAT WAITLIST URL]`).
 - Deep link scheme `meerkatrunner://` (v0.3): `start?id=<uuid>` and `stop?id=<uuid>` only, only for already-approved projects, always posts a notification. No command text is ever accepted from a URL.
 
 ---

@@ -52,6 +52,8 @@ private struct GeneralSettings: View {
                 ForEach(QuitBehaviour.allCases) { Text($0.title).tag($0) }
             }
             Toggle("Hide system listeners", isOn: $registry.hideSystemListeners)
+            Toggle("Hide app listeners", isOn: $registry.hideAppListeners)
+                .help("Hides ports opened by desktop apps such as Dropbox or your editor. Database and container apps stay visible.")
             Toggle("Show running count in menu bar", isOn: $showPortCount)
             // TODO(v0.1): poll interval settings (§7).
         }
