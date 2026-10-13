@@ -27,7 +27,9 @@ final class PortScannerTests: XCTestCase {
         XCTAssertGreaterThan(listener.startTime.seconds, 0)
 
         socket.close()
-        XCTAssertTrue(ours(await scanner.scan(), port: socket.port).isEmpty)
+        // XCTAssert's autoclosures can't await, so scan first.
+        let afterClose = await scanner.scan()
+        XCTAssertTrue(ours(afterClose, port: socket.port).isEmpty)
     }
 
     func testV4AndV6OnSamePortGroupIntoOneRow() async throws {
