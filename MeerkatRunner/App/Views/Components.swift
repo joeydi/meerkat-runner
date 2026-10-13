@@ -192,6 +192,9 @@ struct DiffView: View {
 
     let title: String
     let lines: [Line]
+    /// Measured height of the lines. A bare ScrollView has no ideal height, so in a window sized to
+    /// its content it would collapse to zero.
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -207,8 +210,10 @@ struct DiffView: View {
                         row(line)
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
-            .frame(maxHeight: 220)
+            // Grow with the diff up to 220 pt (DESIGN.md §3 DiffView), then scroll.
+            .frame(height: min(contentHeight, 220))
         }
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor)))
@@ -223,6 +228,7 @@ struct DiffView: View {
         }
         Text("\(prefix) \(text)")
             .font(.system(size: 12, design: .monospaced))
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
