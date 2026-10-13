@@ -42,7 +42,13 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertEqual(registry.otherListeners.map(\.port), [3000, 5000])
         XCTAssertEqual(registry.otherListeners.first?.listeners.count, 2)
 
-        // System listeners are hidden by default (AirPlay Receiver on 5000).
+        // AirPlay Receiver on 5000 is hidden by default. ControlCenter is both a system listener and
+        // inside a .app, so either setting hides it; it shows only with both off.
+        XCTAssertEqual(registry.visibleOtherListeners.map(\.port), [3000])
+        registry.hideSystemListeners = false
+        XCTAssertEqual(registry.visibleOtherListeners.map(\.port), [3000])
+        registry.hideSystemListeners = true
+        registry.hideAppListeners = false
         XCTAssertEqual(registry.visibleOtherListeners.map(\.port), [3000])
         registry.hideSystemListeners = false
         XCTAssertEqual(registry.visibleOtherListeners.map(\.port), [3000, 5000])
