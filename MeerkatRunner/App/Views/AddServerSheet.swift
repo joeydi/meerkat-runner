@@ -278,7 +278,7 @@ struct AddServerSheet: View {
             do {
                 try await registry.add(made.project, shownScript: made.shownScript)
                 close()
-            } catch .changedWhileReviewing {
+            } catch ServerRegistry.ProjectError.changedWhileReviewing {
                 errorMessage = "The project's files changed while this window was open. Review the command again."
                 if let folder = model.folder { model.load(folder) }
             } catch {

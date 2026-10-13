@@ -150,7 +150,7 @@ struct ReapprovalSheet: View {
             do {
                 try await registry.approve(projectID: projectID, shown: shown)
                 dismiss()
-            } catch .changedWhileReviewing {
+            } catch ServerRegistry.ProjectError.changedWhileReviewing {
                 errorMessage = "The files changed again while this was open. Review the updated diff."
                 await load()
             } catch {
