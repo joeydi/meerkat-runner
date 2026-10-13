@@ -209,6 +209,11 @@ struct AddServerSheet: View {
     private var portHint: (text: String, isWarning: Bool) {
         if let port = model.effectivePort,
            let owner = registry.otherListeners.first(where: { $0.port == port }) {
+            // The server being added is usually the one holding the port: not a conflict.
+            if let cwd = owner.cwd, let folder = model.folder,
+               URL(fileURLWithPath: cwd).standardizedFileURL.path == folder.standardizedFileURL.path {
+                return ("Already running here. After adding, Restart in Runner takes it over.", false)
+            }
             let place = owner.cwd.map { " (\(Format.abbreviatingHome($0)))" } ?? ""
             return ("In use by \(owner.processName)\(place)", true)
         }
@@ -272,10 +277,12 @@ private struct CommandOption: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     RadioDot(isSelected: isSelected)
+                    // The selected command is shown in full: nothing runs that the user hasn't seen (§8).
                     Text(proposal.command.displayString)
                         .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular, design: .monospaced))
-                        .lineLimit(1)
+                        .lineLimit(isSelected ? nil : 1)
                         .truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: isSelected)
                     if isSuggested {
                         Badge(text: "Suggested", style: .accent)
                     }

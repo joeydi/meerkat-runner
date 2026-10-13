@@ -172,6 +172,7 @@ struct InfoCallout: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: symbol).font(.system(size: 14))
             text.font(.system(size: 12)).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(.secondary)
         .padding(.vertical, 10)
