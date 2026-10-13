@@ -322,7 +322,7 @@ Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PI
 
 ### 6.6 Localhost-only binding
 
-The app cannot force a bind address. When `preferLocalhostBind` is on, the detector's framework entry adds the right flag or env (Vite `--host 127.0.0.1`, Next `-H 127.0.0.1`, Astro `--host 127.0.0.1`, Django `127.0.0.1:<port>`, Rails `-b 127.0.0.1`, generic `HOST=127.0.0.1`). The resulting command is what gets approved and fingerprinted. If the server still binds a wildcard address, show the **LAN visible** badge.
+The app cannot force a bind address. When `preferLocalhostBind` is on, the detector's framework entry adds the right flag or env (Vite `--host 127.0.0.1`, Next `-H 127.0.0.1`, Astro `--host 127.0.0.1`, Django `127.0.0.1:<port>`, Rails `-b 127.0.0.1`, generic `HOST=127.0.0.1`). The resulting command is what gets approved and fingerprinted. If the server still binds a wildcard address, show the **LAN visible** globe icon.
 
 ### 6.7 Quit and relaunch
 
@@ -398,7 +398,7 @@ Sections, in order (hide a section when it's empty):
 
 | Section | Row content | Actions |
 | --- | --- | --- |
-| Running | Status dot, name, `Framework · localhost:port · uptime` | Open in browser, Logs, Stop. Badges: **LAN visible** (wildcard bind), **Started in Terminal** (matched but not launched by Runner) |
+| Running | Status dot, name, `Framework · localhost:port · uptime` | Open in browser, Logs, Stop. Indicators: **LAN visible** globe icon with a tooltip (wildcard bind), **Started in Terminal** badge (matched but not launched by Runner) |
 | Running — started in terminal | Same as above, with the badge | Stop, **Restart in Runner**, Open, Logs (Logs shows "Output is in your terminal" since Runner has no PTY for it) |
 | Stopped | Hollow dot, name, `Framework · command · :port` | Start. Crashed rows show exit code + "View logs" |
 | Needs approval | Warning dot | Review (opens §9.3) |

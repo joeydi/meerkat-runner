@@ -117,6 +117,20 @@ struct Badge: View {
     }
 }
 
+/// Wildcard bind (0.0.0.0 / ::): other devices on the network can reach the server. An orange globe
+/// with a tooltip, so it takes less room than a text badge (DESIGN.md §2.4).
+struct LANIndicator: View {
+    static let tooltip = "Listening on all network interfaces. Other devices on your network can reach it."
+
+    var body: some View {
+        Image(systemName: "globe")
+            .font(.system(size: 12))
+            .foregroundStyle(Tokens.Colors.warningText)
+            .help(Self.tooltip)
+            .accessibilityLabel("Visible on the local network")
+    }
+}
+
 /// Icon-only button. Always has a tooltip and an accessibility label (DESIGN.md §3 `IconButton`).
 struct IconButton: View {
     enum Size { case row, header }

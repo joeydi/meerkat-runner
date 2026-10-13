@@ -18,6 +18,8 @@ struct ServerRow: View {
                 Text(row.project.name).font(Tokens.Font.rowName).lineLimit(1)
                 Text(meta).font(Tokens.Font.meta).foregroundStyle(.secondary).lineLimit(1)
             }
+            // Badges give way before the meta line truncates (DESIGN.md §3).
+            .layoutPriority(1)
             Spacer(minLength: 8)
             trailing
         }
@@ -65,7 +67,12 @@ struct ServerRow: View {
         case .crashed(let code, _): "exited with code \(code)"
         case .needsReapproval: "needs approval"
         }
-        return "\(row.project.name), \(state), \(meta)"
+        var text = "\(row.project.name), \(state), \(meta)"
+        if case .running(let managed, let listeners, _) = row.state {
+            if !managed { text += ", started in Terminal" }
+            if listeners.contains(where: \.isLANVisible) { text += ", visible on the local network" }
+        }
+        return text
     }
 
     @ViewBuilder
@@ -86,8 +93,7 @@ struct ServerRow: View {
                     }
                 } else {
                     if listeners.contains(where: \.isLANVisible) {
-                        Badge(text: "LAN visible", style: .warning)
-                            .help("Listening on all network interfaces. Other devices on your network can reach it.")
+                        LANIndicator()
                     }
                     if !managed {
                         Badge(text: "Started in Terminal", style: .neutral, symbol: "terminal")
@@ -240,8 +246,7 @@ struct OtherListenerRow: View {
                     IconButton(symbol: "plus.square", label: "Add as Server…") { addAsServer() }
                 }
             } else if group.isLANVisible {
-                Badge(text: "LAN visible", style: .warning)
-                    .help("Listening on all network interfaces. Other devices on your network can reach it.")
+                LANIndicator()
             }
             Text(":\(String(group.port))").font(Tokens.Font.port).foregroundStyle(.secondary)
         }
