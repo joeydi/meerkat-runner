@@ -49,7 +49,7 @@ public enum ScriptFingerprint {
                 resolvedScript: resolvedScript,
                 sourceMaterial: sourceMaterial,
                 envFileNames: project.envFiles,
-                envOverrideKeys: Array(project.envOverrides.keys),
+                envOverrideKeys: project.envOverrides.keys.sorted(),
                 wrapper: wrapper
             )
         }

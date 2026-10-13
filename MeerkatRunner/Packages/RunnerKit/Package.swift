@@ -41,7 +41,7 @@ let package = Package(
         .testTarget(name: "StoreTests", dependencies: ["Store", "Models"]),
         .testTarget(name: "SupervisorTests", dependencies: ["Supervisor", "Models"]),
         .testTarget(name: "ScannerTests", dependencies: ["Scanner", "Models", "ProcInfo"]),
-        .testTarget(name: "RegistryTests", dependencies: ["Registry", "Models"]),
+        .testTarget(name: "RegistryTests", dependencies: ["Registry", "Models", "Store", "Approval"]),
     ],
     swiftLanguageModes: [.v6]
 )

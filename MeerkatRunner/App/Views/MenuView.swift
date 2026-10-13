@@ -23,6 +23,9 @@ struct MenuView: View {
             if totalRowCount >= 6 {
                 filterField
             }
+            if registry.storeIntegrityWarning {
+                integrityWarning
+            }
             if isEmpty {
                 emptyState
             } else {
@@ -149,6 +152,26 @@ struct MenuView: View {
         guard !filter.isEmpty else { return true }
         let haystack = [group.processName, group.cwd ?? "", String(group.port)]
         return haystack.contains { $0.localizedCaseInsensitiveContains(filter) }
+    }
+
+    // MARK: - Integrity warning (AGENTS.md §3 Storage)
+
+    private var integrityWarning: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Tokens.Colors.warningText)
+                .accessibilityHidden(true)
+            Text("Runner's saved projects were changed outside the app, so every approval was cleared. Review each project before it runs.")
+                .font(Tokens.Font.meta)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button("OK") { registry.dismissStoreIntegrityWarning() }
+                .controlSize(.small)
+        }
+        .padding(10)
+        .background(Tokens.Colors.warningFill, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Empty state

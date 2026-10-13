@@ -13,6 +13,8 @@ struct AddServerSheet: View {
     @Environment(ServerRegistry.self) private var registry
     @Environment(\.dismiss) private var dismiss
     @State private var isDropTargeted = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
 
     var body: some View {
         @Bindable var model = model
@@ -59,19 +61,27 @@ struct AddServerSheet: View {
 
             InfoCallout(text: callout)
 
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(Tokens.Font.meta)
+                    .foregroundStyle(Tokens.Colors.errorText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { close() }
                     .keyboardShortcut(.cancelAction)
-                Button("Add") {}
-                    .disabled(true)
+                Button("Add") { save() }
+                    .disabled(!model.canAdd || isSaving)
+                // TODO(v0.2 step 3): enable once the supervisor can start servers.
                 Button("Add and Start") {}
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(true)
+                    .help("Starting servers arrives in the next v0.2 step.")
             }
             .controlSize(.large)
-            .help("Saving and starting arrive in the next v0.2 step.")
         }
         .padding(24)
         .frame(width: 540)
@@ -257,6 +267,24 @@ struct AddServerSheet: View {
         model.wantsFolderPicker = false
         // Let the window finish appearing before running the modal panel.
         DispatchQueue.main.async { chooseFolder() }
+    }
+
+    private func save() {
+        guard let made = model.makeProject() else { return }
+        isSaving = true
+        errorMessage = nil
+        Task {
+            defer { isSaving = false }
+            do {
+                try await registry.add(made.project, shownScript: made.shownScript)
+                close()
+            } catch .changedWhileReviewing {
+                errorMessage = "The project's files changed while this window was open. Review the command again."
+                if let folder = model.folder { model.load(folder) }
+            } catch {
+                errorMessage = "Couldn't save the project."
+            }
+        }
     }
 
     private func close() {

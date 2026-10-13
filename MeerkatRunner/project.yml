@@ -53,6 +53,8 @@ targets:
       - package: RunnerKit
         product: Detection
       - package: RunnerKit
+        product: Approval
+      - package: RunnerKit
         product: Registry
       - package: RunnerKit
         product: Scanner

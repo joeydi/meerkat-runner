@@ -134,6 +134,29 @@ final class AddServerModel {
         return DetectionResult(proposals: proposals, packageManager: manager, envFiles: envFiles)
     }
 
+    // MARK: - Saving
+
+    var canAdd: Bool {
+        folder != nil && !isDetecting && launchCommand != nil
+            && !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The project to save, without an approval: the registry approves exactly `shownScript`.
+    func makeProject() -> (project: Project, shownScript: String?)? {
+        guard let folder, let command = launchCommand else { return nil }
+        let project = Project(
+            name: name.trimmingCharacters(in: .whitespaces),
+            path: folder.path,
+            bookmark: try? folder.bookmarkData(),
+            detector: selectedProposal?.detector ?? .custom,
+            command: command,
+            envFiles: envFiles.filter(\.isOn).map(\.name),
+            expectedPort: effectivePort,
+            autoStartAtLogin: startAtLogin
+        )
+        return (project, selectedProposal?.resolvedScript)
+    }
+
     // MARK: - Derived
 
     var selectedProposal: Proposal? {

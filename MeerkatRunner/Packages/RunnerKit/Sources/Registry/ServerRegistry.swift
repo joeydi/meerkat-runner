@@ -1,3 +1,4 @@
+import Approval
 import Foundation
 import Models
 import Observation
@@ -29,6 +30,7 @@ public final class ServerRegistry {
     private let scanner: PortScanner
     private let store: ProjectStore
     private let supervisor: ProcessSupervisor
+    private let gate: ApprovalGate
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private let defaults: UserDefaults
     private let logger = RunnerLog.logger(category: "registry")
@@ -47,6 +49,7 @@ public final class ServerRegistry {
         self.scanner = scanner
         self.store = store
         self.supervisor = supervisor
+        gate = ApprovalGate(supervisor: supervisor)
         self.defaults = defaults
         // Both default to on.
         hideSystemListeners = defaults.object(forKey: Keys.hideSystemListeners) as? Bool ?? true
@@ -89,6 +92,13 @@ public final class ServerRegistry {
     /// Loads the store and starts polling. Call once at launch.
     public func start() async {
         logger.info("registry starting")
+        await loadStore()
+        // TODO(v0.2 step 3): re-adopt records from runtime.json whose PID + start time still match (§6.7).
+        setPolling(menuOpen: false)
+        await refreshApprovals()
+    }
+
+    func loadStore() async {
         do {
             let result = try await store.load()
             projects = result.projects.map { ProjectRow(project: $0, state: .stopped) }
@@ -96,12 +106,98 @@ public final class ServerRegistry {
         } catch {
             logger.error("Failed to load project store")
         }
-        // TODO(v0.2): re-adopt records from runtime.json whose PID + start time still match (§6.7).
-        setPolling(menuOpen: false)
+    }
+
+    // MARK: - Projects and approval (AGENTS.md §8.2)
+
+    public enum ProjectError: Error, Sendable, Equatable {
+        /// The files changed between showing the command and saving it; nothing was saved.
+        case changedWhileReviewing
+        case unknownProject
+        case storeFailed
+    }
+
+    /// Saves a new project, approving exactly what the user was shown.
+    ///
+    /// - Parameter shownScript: the resolved script displayed in the Add window. If the files now
+    ///   resolve to something else, nothing is saved: approval must cover only what was seen.
+    public func add(_ project: Project, shownScript: String?) async throws(ProjectError) {
+        var project = project
+        let current = await Self.currentInput(for: project)
+        guard current.resolvedScript == shownScript else { throw .changedWhileReviewing }
+        project.approval = await gate.approve(current)
+
+        projects.append(ProjectRow(project: project, state: .stopped))
+        do {
+            try await persist()
+        } catch {
+            projects.removeAll { $0.id == project.id }
+            throw error
+        }
+    }
+
+    public func remove(projectID: UUID) async throws(ProjectError) {
+        guard projects.contains(where: { $0.id == projectID }) else { throw .unknownProject }
+        // TODO(v0.2 step 3): offer to stop it first if Runner launched it.
+        projects.removeAll { $0.id == projectID }
+        try await persist()
+    }
+
+    /// Current inputs for a project's re-approval window: compare with `project.approval`.
+    public func reviewInput(projectID: UUID) async -> ScriptFingerprint.Input? {
+        guard let project = projects.first(where: { $0.id == projectID })?.project else { return nil }
+        return await Self.currentInput(for: project)
+    }
+
+    /// Approves `shown` (the inputs displayed in the re-approval window), if the files still match it.
+    public func approve(projectID: UUID, shown: ScriptFingerprint.Input) async throws(ProjectError) {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else { throw .unknownProject }
+        let current = await Self.currentInput(for: projects[index].project)
+        guard current == shown else { throw .changedWhileReviewing }
+        projects[index].project.approval = await gate.approve(current)
+        if projects[index].state == .needsReapproval { projects[index].state = .stopped }
+        try await persist()
+    }
+
+    /// Recomputes every stopped project's fingerprint from its files and flags changed ones.
+    /// Called at launch and whenever the menu opens; the gate checks again before every start.
+    public func refreshApprovals() async {
+        for row in projects where !row.state.isRunning {
+            let current = await Self.currentInput(for: row.project)
+            let approved = await gate.isApproved(row.project, current: current)
+            guard let index = projects.firstIndex(where: { $0.id == row.id }), !projects[index].state.isRunning else {
+                continue
+            }
+            let next: ServerState = approved
+                ? (projects[index].state == .needsReapproval ? .stopped : projects[index].state)
+                : .needsReapproval
+            if next != projects[index].state { projects[index].state = next }
+        }
+    }
+
+    public func dismissStoreIntegrityWarning() {
+        storeIntegrityWarning = false
+    }
+
+    /// File reads happen off the main actor.
+    nonisolated static func currentInput(for project: Project) async -> ScriptFingerprint.Input {
+        ScriptResolver.currentInput(for: project)
+    }
+
+    private func persist() async throws(ProjectError) {
+        do {
+            try await store.save(projects.map(\.project))
+        } catch {
+            logger.error("Failed to save project store")
+            throw .storeFailed
+        }
     }
 
     /// Menu open: every 2 s. Menu closed: every 15 s (§4 "Scheduling").
     public func setPolling(menuOpen: Bool) {
+        if menuOpen {
+            Task { await refreshApprovals() }
+        }
         pollTask?.cancel()
         let interval = menuOpen ? PortScanner.Interval.active : PortScanner.Interval.idle
         pollTask = Task { [weak self, scanner] in

@@ -1,11 +1,13 @@
 import AppKit
 import Models
+import Registry
 import Scanner
 import SwiftUI
 
 /// A registered project row (DESIGN.md §3 `ServerRow`).
 struct ServerRow: View {
     let row: ProjectRow
+    @Environment(ServerRegistry.self) private var registry
     @Environment(\.openWindow) private var openWindow
     @State private var isHovering = false
 
@@ -25,6 +27,16 @@ struct ServerRow: View {
         .background(isHovering ? Tokens.Colors.fillControl : .clear, in: RoundedRectangle(cornerRadius: 7))
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .contextMenu {
+            if row.state == .needsReapproval {
+                Button("Review…") { review() }
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: row.project.path)
+            }
+            Divider()
+            Button("Remove from Runner…") { confirmRemove() }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
     }
@@ -86,21 +98,40 @@ struct ServerRow: View {
         case .starting, .stopping:
             ProgressView().controlSize(.small)
         case .stopped:
-            IconButton(symbol: "play.fill", label: "Start") {
-                // TODO(v0.2): start through ApprovalGate.
-            }
+            // TODO(v0.2 step 3): start through ApprovalGate.
+            IconButton(symbol: "play.fill", label: "Start (arrives in the next v0.2 step)") {}
+                .disabled(true)
+                .opacity(0.4)
         case .crashed(let code, _):
             HStack(spacing: 4) {
                 Text("Exited (\(code))").font(Tokens.Font.meta).foregroundStyle(Tokens.Colors.errorText)
-                IconButton(symbol: "play.fill", label: "Start") {
-                    // TODO(v0.2)
-                }
+                IconButton(symbol: "play.fill", label: "Start (arrives in the next v0.2 step)") {}
+                    .disabled(true)
+                    .opacity(0.4)
             }
         case .needsReapproval:
-            Button("Review") { openWindow(id: WindowID.reapproval, value: row.project.id) }
+            Button("Review") { review() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
+    }
+
+    private func review() {
+        NSApp.activate()
+        openWindow(id: WindowID.reapproval, value: row.project.id)
+    }
+
+    /// Removing only forgets the project; its folder is never touched (AGENTS.md §1 non-goals).
+    private func confirmRemove() {
+        let alert = NSAlert()
+        alert.messageText = "Remove “\(row.project.name)” from Runner?"
+        alert.informativeText = "Its folder and files aren't touched. You can add it again later."
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let id = row.project.id
+        Task { try? await registry.remove(projectID: id) }
     }
 
     private func open() {
