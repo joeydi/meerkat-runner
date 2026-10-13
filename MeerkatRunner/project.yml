@@ -35,10 +35,14 @@ targets:
         # TODO(AGENTS.md §13 Q3): Developer ID team.
         PRODUCT_BUNDLE_IDENTIFIER: us.okayplus.meerkat-runner
         PRODUCT_NAME: Meerkat Runner
+        # The product name has a space; give the module a clean name for `@testable import MeerkatRunner`.
+        PRODUCT_MODULE_NAME: MeerkatRunner
         INFOPLIST_FILE: App/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: App/MeerkatRunner.entitlements
-        # Hardened Runtime on; no library-validation / JIT / dyld-env exceptions (§8.1 rule 8).
+        # Hardened Runtime on for every shipped build; no library-validation / JIT / dyld-env
+        # exceptions (§8.1 rule 8). Debug turns it off only so `xcodebuild test` can load the test
+        # bundle into the app (library validation would reject it).
         ENABLE_HARDENED_RUNTIME: YES
         # Not sandboxed: the sandbox forbids launching the user's toolchains.
         ENABLE_APP_SANDBOX: NO
@@ -47,6 +51,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+      configs:
+        Debug:
+          ENABLE_HARDENED_RUNTIME: NO
     dependencies:
       - package: RunnerKit
         product: Models
@@ -64,11 +71,35 @@ targets:
         product: Supervisor
       # Sparkle 2 is added in v0.3 (the only allowed third-party dependency).
 
+  # App-level tests (AGENTS.md §10: `xcodebuild test` on every milestone). Hosted by the app.
+  MeerkatRunnerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: AppTests
+    dependencies:
+      - target: MeerkatRunner
+      - package: RunnerKit
+        product: Models
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: us.okayplus.meerkat-runner.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Meerkat Runner.app/Contents/MacOS/Meerkat Runner"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+
 schemes:
   MeerkatRunner:
     build:
       targets:
         MeerkatRunner: all
+        MeerkatRunnerTests: [test]
+    test:
+      config: Debug
+      targets:
+        - MeerkatRunnerTests
     run:
       config: Debug
     archive:

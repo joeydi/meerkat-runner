@@ -28,13 +28,12 @@ jobs:
         working-directory: MeerkatRunner/Packages/RunnerKit
         run: swift test
 
-      - name: Build app
+      - name: Build and test app
         working-directory: MeerkatRunner
         run: |
           xcodegen
-          xcodebuild build \
+          xcodebuild test \
             -project MeerkatRunner.xcodeproj \
             -scheme MeerkatRunner \
-            -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO

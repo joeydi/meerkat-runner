@@ -324,6 +324,38 @@ public final class ServerRegistry {
         await poll() // The listener is gone: the row moves to Stopped.
     }
 
+    /// ⌘R: restarts a Runner-managed server (stop, wait for its exit, start again through the gate),
+    /// takes over a terminal-started one (Restart in Runner), or starts a stopped one.
+    public func restart(_ projectID: UUID) async throws(StopError) {
+        guard let row = row(projectID) else { throw .notRunning }
+        if case .running(let isManaged, _, _) = row.state, !isManaged {
+            try await restartInRunner(projectID)
+            return
+        }
+        switch row.state {
+        case .running, .starting:
+            try await stopProject(projectID)
+            // Wait for the exit event (up to the grace period plus a little) before starting again.
+            let deadline = ContinuousClock.now + ProcessSupervisor.stopGracePeriod + .seconds(2)
+            while ContinuousClock.now < deadline, managed[projectID] != nil {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            do {
+                try await startProject(projectID)
+            } catch {
+                throw .restartFailed(error)
+            }
+        case .stopped, .crashed, .needsReapproval:
+            do {
+                try await startProject(projectID)
+            } catch {
+                throw .restartFailed(error)
+            }
+        case .stopping:
+            throw .notRunning
+        }
+    }
+
     /// Restart in Runner (§6.5): stop the server started elsewhere, wait up to 10 s for its ports to
     /// free, then start the saved command through the approval gate. If the ports don't free up,
     /// report it and don't start.

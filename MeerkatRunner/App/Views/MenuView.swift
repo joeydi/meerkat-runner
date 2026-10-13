@@ -8,8 +8,12 @@ struct MenuView: View {
     @Environment(ServerRegistry.self) private var registry
     @Environment(AddServerModel.self) private var addServerModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @State private var filter = ""
     @State private var showAllOther = false
+    /// Keyboard selection (DESIGN.md §5). Hover is separate and never moves it.
+    @State private var selection: MenuRowID?
+    @FocusState private var filterFocused: Bool
     /// Measured height of the section list. A bare ScrollView has no ideal height, and
     /// MenuBarExtra(.window) sizes itself to ideal height, so the list would collapse to zero.
     @State private var listHeight: CGFloat = 0
@@ -29,22 +33,30 @@ struct MenuView: View {
             if isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    sections
-                        .padding(.horizontal, 6)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        sections
+                            .padding(.horizontal, 6)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
+                    }
+                    // Grow with the content up to the cap (DESIGN.md §2.3), then scroll.
+                    .frame(height: min(listHeight, Tokens.popoverMaxHeight))
+                    .onChange(of: selection) {
+                        if let selection { proxy.scrollTo(selection) }
+                    }
                 }
-                // Grow with the content up to the cap (DESIGN.md §2.3), then scroll.
-                .frame(height: min(listHeight, Tokens.popoverMaxHeight))
             }
             Divider()
             footer
         }
         .frame(width: Tokens.popoverWidth)
+        .background(KeyEventMonitor { handleKey($0) })
         .onAppear { registry.setPolling(menuOpen: true) }
         .onDisappear {
             registry.setPolling(menuOpen: false)
             showAllOther = false
+            selection = nil
+            filter = ""
         }
     }
 
@@ -93,6 +105,7 @@ struct MenuView: View {
             TextField("Filter by name or port", text: $filter)
                 .textFieldStyle(.plain)
                 .font(Tokens.Font.bodySmall)
+                .focused($filterFocused)
         }
         .padding(.horizontal, 8)
         .frame(height: 28)
@@ -106,30 +119,54 @@ struct MenuView: View {
     private var totalRowCount: Int { registry.projects.count + registry.visibleOtherListeners.count }
     private var isEmpty: Bool { totalRowCount == 0 }
 
-    @ViewBuilder
-    private var sections: some View {
-        let running = registry.runningRows.filter { matchesRow($0) }
-        let needsApproval = registry.needsApprovalRows.filter { matchesRow($0) }
-        let stopped = registry.stoppedRows.filter { matchesRow($0) }
+    /// What the list shows right now, in display order. Rendering and keyboard navigation share it.
+    private struct Content {
+        var running: [ProjectRow]
+        var needsApproval: [ProjectRow]
+        var stopped: [ProjectRow]
+        var other: [ListenerGroup]
+        /// Rows hidden behind "Show N more".
+        var hiddenOtherCount: Int
+
+        var order: [MenuRowID] {
+            (running + needsApproval + stopped).map { .project($0.id) } + other.map { .listener($0.id) }
+        }
+    }
+
+    private var content: Content {
         let other = registry.visibleOtherListeners.filter { matchesListener($0) }
         // While filtering, show every match; otherwise collapse to the first few.
         let collapsed = filter.isEmpty && !showAllOther && other.count > Self.otherListenerLimit
         let shownOther = collapsed ? Array(other.prefix(Self.otherListenerLimit)) : other
+        return Content(
+            running: registry.runningRows.filter { matchesRow($0) },
+            needsApproval: registry.needsApprovalRows.filter { matchesRow($0) },
+            stopped: registry.stoppedRows.filter { matchesRow($0) },
+            other: shownOther,
+            hiddenOtherCount: other.count - shownOther.count
+        )
+    }
+
+    @ViewBuilder
+    private var sections: some View {
+        let shown = content
         let groups: [(String, AnyView)] = [
-            ("Running", AnyView(ForEach(running) { ServerRow(row: $0) })),
-            ("Needs approval", AnyView(ForEach(needsApproval) { ServerRow(row: $0) })),
-            ("Stopped", AnyView(ForEach(stopped) { ServerRow(row: $0) })),
+            ("Running", AnyView(projectRows(shown.running))),
+            ("Needs approval", AnyView(projectRows(shown.needsApproval))),
+            ("Stopped", AnyView(projectRows(shown.stopped))),
             ("Other listeners", AnyView(VStack(spacing: 0) {
-                ForEach(shownOther) { OtherListenerRow(group: $0) }
-                if collapsed {
-                    ShowMoreRow(count: other.count - shownOther.count) { showAllOther = true }
+                ForEach(shown.other) { group in
+                    OtherListenerRow(group: group, isSelected: selection == .listener(group.id))
+                        .id(MenuRowID.listener(group.id))
+                }
+                if shown.hiddenOtherCount > 0 {
+                    ShowMoreRow(count: shown.hiddenOtherCount) { showAllOther = true }
                 }
             })),
         ]
-        let counts = [running.count, needsApproval.count, stopped.count, other.count]
+        let counts = [shown.running.count, shown.needsApproval.count, shown.stopped.count, shown.other.count]
         let visible = groups.indices.filter { counts[$0] > 0 }
 
-        // TODO(v0.3): keyboard selection (§9.1, DESIGN.md §5).
         VStack(alignment: .leading, spacing: 0) {
             ForEach(visible, id: \.self) { index in
                 if index != visible.first {
@@ -140,6 +177,80 @@ struct MenuView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func projectRows(_ rows: [ProjectRow]) -> some View {
+        ForEach(rows) { row in
+            ServerRow(row: row, isSelected: selection == .project(row.id))
+                .id(MenuRowID.project(row.id))
+        }
+    }
+
+    // MARK: - Keyboard (DESIGN.md §5)
+
+    private var actions: ProjectActions { ProjectActions(registry: registry, openWindow: openWindow) }
+
+    /// Returns true when the key was handled (and should not reach the filter field / window).
+    private func handleKey(_ press: KeyPress) -> Bool {
+        guard let command = MenuNavigation.command(
+            keyCode: press.keyCode,
+            characters: press.characters,
+            modifiers: press.modifiers,
+            filterIsEmpty: filter.isEmpty,
+            filterFocused: filterFocused
+        ) else { return false }
+
+        let order = content.order
+        if let current = selection, !order.contains(current) { selection = nil }
+        let selectedProject = selection.flatMap { id -> ProjectRow? in
+            guard case .project(let projectID) = id else { return nil }
+            return registry.projects.first { $0.id == projectID }
+        }
+        let selectedListener = selection.flatMap { id -> ListenerGroup? in
+            guard case .listener(let groupID) = id else { return nil }
+            return registry.otherListeners.first { $0.id == groupID }
+        }
+
+        switch command {
+        case .moveUp:
+            selection = MenuNavigation.move(selection, in: order, by: -1)
+        case .moveDown:
+            selection = MenuNavigation.move(selection, in: order, by: 1)
+        case .primary:
+            if let selectedProject {
+                actions.primary(selectedProject)
+            } else if let selectedListener {
+                URLActions.open(port: selectedListener.port)
+            } else {
+                return false
+            }
+        case .stop:
+            guard let selectedProject else { return false }
+            actions.stop(selectedProject)
+        case .restart:
+            guard let selectedProject else { return false }
+            actions.restart(selectedProject)
+        case .logs:
+            guard let selectedProject else { return false }
+            actions.showLogs(selectedProject)
+        case .copyURL:
+            if let port = selectedProject?.project.port ?? selectedListener?.port {
+                URLActions.copy(port: port)
+            } else {
+                return false
+            }
+        case .settings:
+            NSApp.activate()
+            openSettings()
+        case .clearFilter:
+            filter = ""
+        case .type(let text):
+            // The filter field only exists with 6+ rows (DESIGN.md §4.1).
+            guard totalRowCount >= 6 else { return false }
+            filterFocused = true
+            filter += text
+        }
+        return true
     }
 
     private func matchesRow(_ row: ProjectRow) -> Bool {

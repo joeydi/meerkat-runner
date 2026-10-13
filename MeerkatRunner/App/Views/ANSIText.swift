@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 /// Renders terminal output with SGR colours (AGENTS.md §9.4). Supports reset, bold, dim, the 8 + 8
-/// bright foreground colours and default; 256-colour / RGB codes are skipped. Other escapes are dropped.
+/// bright foreground colours and default; 256-colour / RGB codes are skipped. OSC sequences (links,
+/// titles) and other escapes are dropped.
 enum ANSIText {
     static func attributed(_ raw: String) -> AttributedString {
         var result = AttributedString()
@@ -12,8 +13,19 @@ enum ANSIText {
         while let escape = text.firstIndex(of: "\u{1B}") {
             result += style.apply(String(text[..<escape]))
             text = text[text.index(after: escape)...]
+            if text.first == "]" {
+                // OSC (hyperlinks, window titles): skip to BEL or ESC \.
+                if let bell = text.firstIndex(of: "\u{07}") {
+                    text = text[text.index(after: bell)...]
+                } else if let terminator = text.range(of: "\u{1B}\\") {
+                    text = text[terminator.upperBound...]
+                } else {
+                    text = text[text.endIndex...]
+                }
+                continue
+            }
             guard text.first == "[" else {
-                // Not CSI: drop the escape and the next character.
+                // Other two-character escapes: drop the escape and the next character.
                 text = text.dropFirst()
                 continue
             }
