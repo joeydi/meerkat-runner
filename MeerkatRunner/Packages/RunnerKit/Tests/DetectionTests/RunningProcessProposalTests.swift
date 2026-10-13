@@ -28,6 +28,24 @@ final class RunningProcessProposalTests: XCTestCase {
         )
     }
 
+    func testVersionPinnedExecutablesBecomeStableNames() throws {
+        let homebrewPython = "/opt/homebrew/Cellar/python@3.13/3.13.0_1/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python"
+        let pythonOrg = "/Library/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python"
+        let cellarNode = "/opt/homebrew/Cellar/node/22.11.0/bin/node"
+
+        func command(_ executable: String) throws -> LaunchCommand {
+            try XCTUnwrap(RunningProcessProposal.make(
+                argv: [executable, "-m", "http.server", "8000"], folder: folder, port: 8000, framework: nil, rankedFirst: true
+            )).command
+        }
+        XCTAssertEqual(try command(homebrewPython), .argv(["python3.13", "-m", "http.server", "8000"]))
+        XCTAssertEqual(try command(pythonOrg), .argv(["python3.12", "-m", "http.server", "8000"]))
+        XCTAssertEqual(try command(cellarNode), .argv(["node", "-m", "http.server", "8000"]))
+        // Stable paths are kept as they are.
+        XCTAssertEqual(try command("/opt/homebrew/bin/python3"), .argv(["/opt/homebrew/bin/python3", "-m", "http.server", "8000"]))
+        XCTAssertEqual(try command(".venv/bin/python"), .argv([".venv/bin/python", "-m", "http.server", "8000"]))
+    }
+
     func testNoArgvNoProposal() {
         XCTAssertNil(RunningProcessProposal.make(argv: [], folder: folder, port: 8000, framework: nil, rankedFirst: true))
     }

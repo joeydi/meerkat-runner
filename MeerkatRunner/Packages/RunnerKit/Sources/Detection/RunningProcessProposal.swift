@@ -12,7 +12,9 @@ public enum RunningProcessProposal {
     ///   - rankedFirst: true when no detector found anything, so this becomes the suggestion.
     public static func make(argv: [String], folder: URL, port: Int, framework: String?, rankedFirst: Bool) -> Proposal? {
         guard let executable = argv.first, !executable.isEmpty else { return nil }
-        let command = LaunchCommand.argv(relativize(argv, to: folder))
+        var args = relativize(argv, to: folder)
+        args[0] = stableExecutable(args[0])
+        let command = LaunchCommand.argv(args)
         return Proposal(
             detector: .custom,
             label: command.displayString,
@@ -23,6 +25,24 @@ public enum RunningProcessProposal {
             // Below every detector unless nothing was detected.
             confidence: rankedFirst ? 1 : 0
         )
+    }
+
+    /// Replaces version-pinned install paths with a name that survives upgrades, resolved on PATH at start:
+    /// - Framework Python (`…/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python`,
+    ///   which python.org and Homebrew builds re-exec into) → `python3.13`, keeping the minor version.
+    /// - Homebrew `…/Cellar/<formula>/<version>/…` → the executable's name (`node`), since the version
+    ///   directory disappears on `brew upgrade`.
+    static func stableExecutable(_ path: String) -> String {
+        let pattern = #"/Python\.framework/Versions/(\d+\.\d+)/Resources/Python\.app/Contents/MacOS/Python$"#
+        if let regex = try? NSRegularExpression(pattern: pattern),
+           let match = regex.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
+           let version = Range(match.range(at: 1), in: path) {
+            return "python\(path[version])"
+        }
+        if path.hasPrefix("/"), path.contains("/Cellar/") {
+            return (path as NSString).lastPathComponent
+        }
+        return path
     }
 
     /// Absolute paths inside `folder` become `./relative`, so the command survives the project moving.
