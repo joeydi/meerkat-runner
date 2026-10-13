@@ -12,7 +12,11 @@ public enum ListenerClassifier {
 
     /// Ordered: the first match wins. `node` is the fallback and must stay last.
     static let rules: [Rule] = [
-        Rule(label: "Next.js") { args in containsSequence(args, ["next", "dev"]) || args.contains("next-server") },
+        // Next renames its server process, e.g. "next-server (v16.3.6)".
+        Rule(label: "Next.js") { args in
+            containsSequence(args, ["next", "dev"]) || containsSequence(args, ["next", "start"])
+                || args.contains { $0.hasPrefix("next-server") }
+        },
         Rule(label: "Vite") { args in args.contains("vite") },
         Rule(label: "Astro") { args in containsSequence(args, ["astro", "dev"]) },
         Rule(label: "Rails") { args in

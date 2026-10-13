@@ -31,6 +31,9 @@ public final class ServerRegistry {
     /// Servers Runner launched (or re-adopted), by project.
     public private(set) var managed: [UUID: ProcessSupervisor.ManagedInfo] = [:]
 
+    /// Called when a server exits without being asked to (§6.8), for the crash notification.
+    @ObservationIgnored public var onCrash: (@MainActor (_ project: Project, _ exitCode: Int32) -> Void)?
+
     private let scanner: PortScanner
     private let store: ProjectStore
     private let supervisor: ProcessSupervisor
@@ -146,7 +149,9 @@ public final class ServerRegistry {
                     row.state = .crashed(exitCode: exitCode, at: .now)
                 }
             }
-            // TODO(v0.2 step 3b): crash notification ("docs exited with code 1 — View logs").
+            if !requested, let exitCode, let project = row(projectID)?.project {
+                onCrash?(project, exitCode)
+            }
             apply(lastListeners)
         case .portInOutput(let projectID, let port):
             if let row = row(projectID), row.project.learnedPort == nil {
@@ -245,9 +250,11 @@ public final class ServerRegistry {
 
     public enum StopError: Error, Sendable, Equatable {
         case notRunning
-        /// Matched but not launched by Runner (step 3b).
-        case startedElsewhere
         case failed(String)
+        /// Restart in Runner: the old server's port didn't free up within 10 s, so nothing was started.
+        case portStillInUse(Int)
+        /// Restart in Runner: stopped, but starting through the approval gate failed or needs review.
+        case restartFailed(StartError)
     }
 
     /// Starts a stopped or crashed project. Always goes through the approval gate, which recomputes
@@ -283,19 +290,68 @@ public final class ServerRegistry {
         }
     }
 
-    /// Stops a server Runner launched (SIGTERM, then SIGKILL after 5 s).
+    /// Stops a running project (SIGTERM, then SIGKILL after 5 s). Runner-launched servers stop by process
+    /// group; servers started elsewhere (e.g. a terminal) stop per §6.5 without touching the shell.
     public func stopProject(_ projectID: UUID) async throws(StopError) {
         guard let row = row(projectID), row.state.isRunning || row.state == .starting else { throw .notRunning }
-        guard managed[projectID] != nil else { throw .startedElsewhere }
         let previous = row.state
         update(projectID) { $0.state = .stopping }
-        do {
-            try await supervisor.stop(projectID: projectID)
-        } catch {
-            update(projectID) { $0.state = previous }
-            throw .failed(Self.describe(error))
+
+        if managed[projectID] != nil {
+            do {
+                try await supervisor.stop(projectID: projectID)
+            } catch {
+                update(projectID) { $0.state = previous }
+                throw .failed(Self.describe(error))
+            }
+            return // The exit event moves the row to Stopped.
         }
-        // The exit event moves the row to Stopped.
+
+        guard case .running(_, let listeners, _) = previous, !listeners.isEmpty else {
+            update(projectID) { $0.state = previous }
+            throw .notRunning
+        }
+        // One stop per distinct process (a server listening on v4 + v6 is one process).
+        var seen = Set<pid_t>()
+        for listener in listeners where seen.insert(listener.pid).inserted {
+            do {
+                try await supervisor.stopExternal(listener)
+            } catch {
+                update(projectID) { $0.state = previous }
+                throw .failed(Self.describe(error))
+            }
+        }
+        await poll() // The listener is gone: the row moves to Stopped.
+    }
+
+    /// Restart in Runner (§6.5): stop the server started elsewhere, wait up to 10 s for its ports to
+    /// free, then start the saved command through the approval gate. If the ports don't free up,
+    /// report it and don't start.
+    public func restartInRunner(_ projectID: UUID) async throws(StopError) {
+        guard let row = row(projectID), case .running(let managed, let listeners, _) = row.state, !managed else {
+            throw .notRunning
+        }
+        let ports = Set(listeners.map(\.port))
+        try await stopProject(projectID)
+
+        let deadline = ContinuousClock.now + ProcessSupervisor.portFreeTimeout
+        var busy = ports
+        while ContinuousClock.now < deadline {
+            let open = Set(await scanner.scan().map(\.port))
+            busy = ports.intersection(open)
+            if busy.isEmpty { break }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        if let port = busy.min() { throw .portStillInUse(port) }
+
+        update(projectID) { row in
+            if row.state == .stopping || row.state.isRunning { row.state = .stopped }
+        }
+        do {
+            try await startProject(projectID)
+        } catch {
+            throw .restartFailed(error)
+        }
     }
 
     /// Footer "Stop All Managed Servers", and quit. Terminal-started servers are left alone.
@@ -503,7 +559,7 @@ public final class ServerRegistry {
                 if current != .starting && current != .stopping {
                     next = .running(managed: true, listeners: [], since: info.startedAt)
                 }
-            } else if current.isRunning {
+            } else if current.isRunning || (current == .stopping && info == nil) {
                 next = .stopped
             }
             if next != current { projects[index].state = next }

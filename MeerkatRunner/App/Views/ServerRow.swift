@@ -81,13 +81,8 @@ struct ServerRow: View {
                         IconButton(symbol: "text.alignleft", label: "Show Logs") { showLogs() }
                         IconButton(symbol: "stop.fill", label: "Stop") { stop() }
                     } else {
-                        // TODO(v0.2 step 3b): Restart in Runner and Stop for terminal-started servers (§6.5).
-                        IconButton(symbol: "arrow.clockwise", label: "Restart in Runner (coming next)") {}
-                            .disabled(true)
-                            .opacity(0.4)
-                        IconButton(symbol: "stop.fill", label: "Stop (coming next for servers started in Terminal)") {}
-                            .disabled(true)
-                            .opacity(0.4)
+                        IconButton(symbol: "arrow.clockwise", label: "Restart in Runner") { restartInRunner() }
+                        IconButton(symbol: "stop.fill", label: "Stop") { confirmExternalStop() }
                     }
                 } else {
                     if listeners.contains(where: \.isLANVisible) {
@@ -137,6 +132,37 @@ struct ServerRow: View {
                 review()
             } catch ServerRegistry.StartError.failed(let message) {
                 Alerts.show("Couldn't start \(name)", message)
+            } catch {}
+        }
+    }
+
+    /// Terminal-started servers confirm first; the terminal itself is never touched (DESIGN.md §5).
+    private func confirmExternalStop() {
+        let alert = NSAlert()
+        alert.messageText = "Stop \(row.project.name)?"
+        alert.informativeText = "It was started in Terminal. The terminal stays open."
+        alert.addButton(withTitle: "Stop")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        stop()
+    }
+
+    /// Stops the terminal-started server, waits for its port, then starts the saved command in Runner.
+    private func restartInRunner() {
+        let id = row.project.id
+        let name = row.project.name
+        Task {
+            do {
+                try await registry.restartInRunner(id)
+            } catch ServerRegistry.StopError.portStillInUse(let port) {
+                Alerts.show("Couldn't restart \(name)", "Port \(port) didn't free up within 10 seconds, so Runner didn't start it.")
+            } catch ServerRegistry.StopError.restartFailed(.needsApproval) {
+                review()
+            } catch ServerRegistry.StopError.restartFailed(.failed(let message)) {
+                Alerts.show("Couldn't start \(name)", message)
+            } catch ServerRegistry.StopError.failed(let message) {
+                Alerts.show("Couldn't stop \(name)", message)
             } catch {}
         }
     }

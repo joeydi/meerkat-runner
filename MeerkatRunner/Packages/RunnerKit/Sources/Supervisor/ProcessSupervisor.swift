@@ -372,11 +372,93 @@ public actor ProcessSupervisor {
         }
     }
 
-    /// Stops a matched server that was started elsewhere (e.g. a terminal), per §6.5.
+    /// A process Runner may signal, identified by PID + start time (re-checked before every signal).
+    struct Target: Equatable {
+        var pid: pid_t
+        var startTime: ProcessStartTime
+
+        init(pid: pid_t, startTime: ProcessStartTime) {
+            self.pid = pid
+            self.startTime = startTime
+        }
+
+        init(_ info: BSDInfo) {
+            self.init(pid: info.pid, startTime: ProcessStartTime(seconds: info.startSeconds, microseconds: info.startMicroseconds))
+        }
+
+        /// Still the same live process, owned by us, and not a shell / terminal / launchd.
+        var isSafeToSignal: Bool {
+            guard let info = try? ProcessInfoReader.bsdInfo(pid: pid), info.pid == pid else { return false }
+            return Target(info) == self
+                && !SignalPolicy.isForbidden(processName: info.name, pid: pid, uid: info.uid)
+        }
+    }
+
+    /// Stops a matched server that was started elsewhere, e.g. `npm run dev` in a terminal (§6.5):
     ///
-    /// TODO(v0.2 step 3b)
-    public func stopExternal(_ listener: Listener) async throws(SupervisorError) {
-        throw .notImplemented
+    /// 1. The listener's PID + start time must still match the scan and it must be ours.
+    /// 2. If its process group contains no shell or terminal app and differs from the parent shell's
+    ///    group (job control gives `npm run dev` its own group), every member of that group is a target.
+    /// 3. Otherwise only the process and its descendants are, deepest first.
+    /// 4. SIGTERM → up to 5 s → SIGKILL, re-verifying each target right before each signal.
+    ///
+    /// Never signals a shell, the terminal app, launchd, or another user's process: the terminal stays open.
+    public func stopExternal(_ listener: Listener, gracePeriod: Duration = ProcessSupervisor.stopGracePeriod) async throws(SupervisorError) {
+        let targets = try Self.externalTargets(for: listener)
+        for target in targets where target.isSafeToSignal {
+            kill(target.pid, SIGTERM)
+        }
+        let deadline = ContinuousClock.now + gracePeriod
+        while ContinuousClock.now < deadline {
+            if !targets.contains(where: \.isSafeToSignal) { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        for target in targets where target.isSafeToSignal {
+            kill(target.pid, SIGKILL)
+        }
+    }
+
+    /// The processes `stopExternal` would signal, deepest first. Throws if the listener itself changed
+    /// or must never be signalled.
+    static func externalTargets(for listener: Listener) throws(SupervisorError) -> [Target] {
+        guard let leader = try? ProcessInfoReader.bsdInfo(pid: listener.pid), leader.pid == listener.pid,
+              Target(leader).startTime == listener.startTime
+        else { throw .identityMismatch }
+        let uid = getuid()
+        guard !SignalPolicy.isForbidden(processName: leader.name, pid: leader.pid, uid: leader.uid, currentUID: uid) else {
+            throw .forbiddenTarget
+        }
+
+        // Option 1: the whole process group, when it's the server's own job.
+        let parentGroup = (try? ProcessInfoReader.bsdInfo(pid: leader.ppid))?.pgid
+        let groupInfos = ((try? ProcessInfoReader.processGroupMembers(leader.pgid)) ?? [])
+            .compactMap { try? ProcessInfoReader.bsdInfo(pid: $0) }
+            .filter { $0.pgid == leader.pgid }
+        let groupIsServerOnly = leader.pgid > 1
+            && leader.pgid != parentGroup
+            && !groupInfos.isEmpty
+            && groupInfos.allSatisfy { !SignalPolicy.isForbidden(processName: $0.name, pid: $0.pid, uid: $0.uid, currentUID: uid) }
+        if groupIsServerOnly {
+            return depthFirst(groupInfos.map(Target.init), root: leader.pid)
+        }
+
+        // Option 2: the process and its descendants, deepest first.
+        let all = ((try? ProcessInfoReader.listPIDs(uid: uid)) ?? []).compactMap { try? ProcessInfoReader.bsdInfo(pid: $0) }
+        var children: [pid_t: [BSDInfo]] = [:]
+        for info in all { children[info.ppid, default: []].append(info) }
+        var ordered: [BSDInfo] = [leader]
+        var index = 0
+        while index < ordered.count {
+            ordered += children[ordered[index].pid] ?? []
+            index += 1
+        }
+        let safe = ordered.filter { !SignalPolicy.isForbidden(processName: $0.name, pid: $0.pid, uid: $0.uid, currentUID: uid) }
+        return safe.reversed().map(Target.init)
+    }
+
+    /// Orders group members so children come before their parents and the leader comes last.
+    private static func depthFirst(_ targets: [Target], root: pid_t) -> [Target] {
+        targets.filter { $0.pid != root } + targets.filter { $0.pid == root }
     }
 
     /// Current identity of a live process, or nil if it no longer exists.

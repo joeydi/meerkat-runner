@@ -222,4 +222,109 @@ final class SupervisorIntegrationTests: XCTestCase {
         XCTAssertEqual(try mode(directory.appendingPathComponent("Logs/\(id.uuidString).log")), 0o600)
         try await supervisor.stop(projectID: id)
     }
+
+    // MARK: - Servers started elsewhere (§6.5)
+
+    /// The first member of `pgid` whose name looks like Python, as a Listener on `port`.
+    private func pythonListener(inGroup pgid: pid_t, port: Int) -> Listener? {
+        let members = (try? ProcessInfoReader.processGroupMembers(pgid)) ?? []
+        for pid in members {
+            guard let info = try? ProcessInfoReader.bsdInfo(pid: pid), info.name.lowercased().hasPrefix("python") else { continue }
+            return Listener(
+                pid: pid, pgid: info.pgid, ppid: info.ppid, port: port, address: .loopback, family: .v4,
+                executablePath: (try? ProcessInfoReader.executablePath(pid: pid)) ?? "",
+                argv: [], cwd: nil,
+                startTime: ProcessStartTime(seconds: info.startSeconds, microseconds: info.startMicroseconds)
+            )
+        }
+        return nil
+    }
+
+    private func port(in text: String) -> Int? {
+        guard let range = text.range(of: #"localhost:(\d+)"#, options: .regularExpression) else { return nil }
+        return Int(text[range].split(separator: ":").last ?? "")
+    }
+
+    func testStoppingServerThatSharesAShellsGroupLeavesTheShellAlive() async throws {
+        try requireExecutable("python3")
+        let supervisor = ProcessSupervisor()
+        let id = UUID()
+        // Like a shell without job control: the server shares the shell's process group.
+        let shell = try await supervisor.spawn(spec(
+            ["/bin/sh", "-c", "python3 http_server.py 0 & while true; do sleep 1; done"], projectID: id
+        ))
+        var listener: Listener?
+        _ = await eventually {
+            if let port = port(in: await output(supervisor, id)) {
+                listener = pythonListener(inGroup: shell.pgid, port: port)
+            }
+            return listener != nil
+        }
+        let server = try XCTUnwrap(listener)
+        XCTAssertEqual(server.pgid, shell.pgid)
+
+        // The shell is in the group, so only the server (and its descendants) may be targeted.
+        let targets = try ProcessSupervisor.externalTargets(for: server)
+        XCTAssertFalse(targets.contains { $0.pid == shell.identity.pid }, "must never target the shell")
+        XCTAssertEqual(targets.last?.pid, server.pid)
+
+        try await supervisor.stopExternal(server)
+        let serverGone = await eventually(timeout: .seconds(2)) { !isAlive(server.pid) }
+        XCTAssertTrue(serverGone)
+        XCTAssertTrue(isAlive(shell.identity.pid), "the shell must survive")
+
+        try await supervisor.stop(projectID: id)
+    }
+
+    func testStoppingServerInItsOwnGroupTargetsTheGroup() async throws {
+        try requireExecutable("node")
+        let supervisor = ProcessSupervisor()
+        let id = UUID()
+        let launched = try await supervisor.spawn(spec(["node", "node_with_worker.js", "0"], projectID: id))
+        var workerPID: pid_t?
+        var serverPort: Int?
+        _ = await eventually {
+            let text = await output(supervisor, id)
+            if let range = text.range(of: #"worker pid (\d+)"#, options: .regularExpression) {
+                workerPID = pid_t(text[range].split(separator: " ").last ?? "")
+            }
+            serverPort = port(in: text)
+            return workerPID != nil && serverPort != nil
+        }
+        let worker = try XCTUnwrap(workerPID)
+        let info = try XCTUnwrap(try? ProcessInfoReader.bsdInfo(pid: launched.identity.pid))
+        let server = Listener(
+            pid: launched.identity.pid, pgid: info.pgid, ppid: info.ppid, port: try XCTUnwrap(serverPort),
+            address: .loopback, family: .v4, executablePath: launched.identity.executablePath, argv: [], cwd: nil,
+            startTime: launched.identity.startTime
+        )
+
+        // Its own group, no shell in it, and not the parent's group: the whole group is the target.
+        let targets = try ProcessSupervisor.externalTargets(for: server)
+        XCTAssertEqual(Set(targets.map(\.pid)), [launched.identity.pid, worker])
+        XCTAssertEqual(targets.last?.pid, launched.identity.pid, "leader last")
+
+        try await supervisor.stopExternal(server)
+        let allGone = await eventually(timeout: .seconds(2)) { !isAlive(worker) && !isAlive(launched.identity.pid) }
+        XCTAssertTrue(allGone)
+    }
+
+    func testExternalStopRefusesChangedProcess() async throws {
+        let supervisor = ProcessSupervisor()
+        let id = UUID()
+        let launched = try await supervisor.spawn(spec(["/bin/sleep", "30"], projectID: id))
+        let stale = Listener(
+            pid: launched.identity.pid, pgid: launched.pgid, ppid: getpid(), port: 1, address: .loopback, family: .v4,
+            executablePath: launched.identity.executablePath, argv: [], cwd: nil,
+            startTime: ProcessStartTime(seconds: launched.identity.startTime.seconds - 60, microseconds: 0)
+        )
+        do {
+            try await supervisor.stopExternal(stale)
+            XCTFail("expected identityMismatch")
+        } catch {
+            XCTAssertEqual(error, .identityMismatch)
+        }
+        XCTAssertTrue(isAlive(launched.identity.pid))
+        try await supervisor.stop(projectID: id)
+    }
 }
