@@ -1,0 +1,34 @@
+{
+  "proposals": [
+    {
+      "label": "npm dev",
+      "argv": [
+        "npm",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "turbo run dev",
+      "source": "package.json",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    },
+    {
+      "label": "api dev",
+      "argv": [
+        "npm",
+        "run",
+        "dev",
+        "--workspace",
+        "api"
+      ],
+      "resolvedScript": "node --watch server.js",
+      "source": "packages/api/package.json",
+      "framework": null,
+      "predictedPort": null,
+      "notes": [
+        "Turborepo workspace"
+      ]
+    }
+  ]
+}

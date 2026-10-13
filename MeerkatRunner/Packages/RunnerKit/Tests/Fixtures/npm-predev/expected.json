@@ -1,0 +1,17 @@
+{
+  "proposals": [
+    {
+      "label": "npm dev",
+      "argv": [
+        "npm",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "predev: node scripts/setup.js\ndev: node server.js",
+      "source": "package.json",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    }
+  ]
+}

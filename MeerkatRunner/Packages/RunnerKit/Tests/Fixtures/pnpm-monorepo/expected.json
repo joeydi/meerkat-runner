@@ -1,0 +1,47 @@
+{
+  "proposals": [
+    {
+      "label": "pnpm dev",
+      "argv": [
+        "pnpm",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "pnpm -r --parallel dev",
+      "source": "package.json",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    },
+    {
+      "label": "@acme/docs dev",
+      "argv": [
+        "pnpm",
+        "--filter",
+        "@acme/docs",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "astro dev",
+      "source": "apps/docs/package.json",
+      "framework": "Astro 4",
+      "predictedPort": 4321,
+      "notes": []
+    },
+    {
+      "label": "@acme/web dev",
+      "argv": [
+        "pnpm",
+        "--filter",
+        "@acme/web",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "next dev",
+      "source": "apps/web/package.json",
+      "framework": "Next.js 14",
+      "predictedPort": 3000,
+      "notes": []
+    }
+  ]
+}

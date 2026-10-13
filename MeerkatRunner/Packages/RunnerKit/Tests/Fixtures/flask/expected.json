@@ -1,0 +1,20 @@
+{
+  "proposals": [
+    {
+      "label": "python3 -m flask run",
+      "argv": [
+        "python3",
+        "-m",
+        "flask",
+        "run"
+      ],
+      "resolvedScript": null,
+      "source": "requirements.txt",
+      "framework": "Flask",
+      "predictedPort": 5000,
+      "notes": [
+        "Port 5000 is also used by AirPlay Receiver"
+      ]
+    }
+  ]
+}

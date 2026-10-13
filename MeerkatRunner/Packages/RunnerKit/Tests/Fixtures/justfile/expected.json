@@ -1,0 +1,28 @@
+{
+  "proposals": [
+    {
+      "label": "just dev",
+      "argv": [
+        "just",
+        "dev"
+      ],
+      "resolvedScript": "pnpm dev --port 4000",
+      "source": "justfile",
+      "framework": null,
+      "predictedPort": 4000,
+      "notes": []
+    },
+    {
+      "label": "just start",
+      "argv": [
+        "just",
+        "start"
+      ],
+      "resolvedScript": "node server.js",
+      "source": "justfile",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    }
+  ]
+}

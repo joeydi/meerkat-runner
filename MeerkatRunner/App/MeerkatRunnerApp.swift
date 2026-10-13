@@ -10,6 +10,7 @@ struct MeerkatRunnerApp: App {
         MenuBarExtra {
             MenuView()
                 .environment(appDelegate.registry)
+                .environment(appDelegate.addServer)
         } label: {
             MenuBarLabel(registry: appDelegate.registry)
         }
@@ -25,6 +26,7 @@ struct MeerkatRunnerApp: App {
         Window("Add Server", id: WindowID.addServer) {
             AddServerSheet()
                 .environment(appDelegate.registry)
+                .environment(appDelegate.addServer)
         }
         .windowResizability(.contentSize)
 
@@ -56,6 +58,7 @@ enum MeerkatLinks {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let registry = ServerRegistry()
+    let addServer = AddServerModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { await registry.start() }

@@ -1,0 +1,17 @@
+{
+  "proposals": [
+    {
+      "label": ".venv/bin/python manage.py runserver",
+      "argv": [
+        ".venv/bin/python",
+        "manage.py",
+        "runserver"
+      ],
+      "resolvedScript": null,
+      "source": "manage.py",
+      "framework": "Django",
+      "predictedPort": 8000,
+      "notes": []
+    }
+  ]
+}

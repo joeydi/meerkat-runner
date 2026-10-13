@@ -1,0 +1,30 @@
+{
+  "proposals": [
+    {
+      "label": "npm dev",
+      "argv": [
+        "npm",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "vite",
+      "source": "package.json",
+      "framework": "Vite 5",
+      "predictedPort": 5173,
+      "notes": []
+    },
+    {
+      "label": "npm preview",
+      "argv": [
+        "npm",
+        "run",
+        "preview"
+      ],
+      "resolvedScript": "vite preview",
+      "source": "package.json",
+      "framework": "Vite 5",
+      "predictedPort": 4173,
+      "notes": []
+    }
+  ]
+}

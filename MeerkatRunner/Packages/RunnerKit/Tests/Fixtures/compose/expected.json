@@ -1,0 +1,19 @@
+{
+  "proposals": [
+    {
+      "label": "docker compose up",
+      "argv": [
+        "docker",
+        "compose",
+        "up"
+      ],
+      "resolvedScript": null,
+      "source": "compose.yaml",
+      "framework": "Docker",
+      "predictedPort": 8080,
+      "notes": [
+        "Docker"
+      ]
+    }
+  ]
+}

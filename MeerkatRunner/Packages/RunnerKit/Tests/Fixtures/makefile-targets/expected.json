@@ -1,0 +1,28 @@
+{
+  "proposals": [
+    {
+      "label": "make dev",
+      "argv": [
+        "make",
+        "dev"
+      ],
+      "resolvedScript": "npm run dev -- --port $(PORT)",
+      "source": "Makefile",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    },
+    {
+      "label": "make serve",
+      "argv": [
+        "make",
+        "serve"
+      ],
+      "resolvedScript": "python3 -m http.server 8080",
+      "source": "Makefile",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    }
+  ]
+}

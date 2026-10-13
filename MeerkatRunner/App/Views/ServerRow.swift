@@ -117,6 +117,8 @@ struct ServerRow: View {
 /// (AGENTS.md §1, DESIGN.md §3 `OtherListenerRow`).
 struct OtherListenerRow: View {
     let group: ListenerGroup
+    @Environment(AddServerModel.self) private var addServerModel
+    @Environment(\.openWindow) private var openWindow
     @State private var isHovering = false
 
     var body: some View {
@@ -139,7 +141,9 @@ struct OtherListenerRow: View {
                 if group.cwd != nil {
                     IconButton(symbol: "folder", label: "Reveal Folder") { revealFolder() }
                 }
-                // TODO(v0.2): "Add as server…" pre-fills the Add sheet with the cwd.
+                if canAddAsServer {
+                    IconButton(symbol: "plus.square", label: "Add as Server…") { addAsServer() }
+                }
             } else if group.isLANVisible {
                 Badge(text: "LAN visible", style: .warning)
                     .help("Listening on all network interfaces. Other devices on your network can reach it.")
@@ -158,6 +162,10 @@ struct OtherListenerRow: View {
             if group.cwd != nil {
                 Button("Reveal in Finder") { revealFolder() }
             }
+            if canAddAsServer {
+                Button("Add as Server…") { addAsServer() }
+            }
+            Divider()
             Button("Copy PID") { copy(String(group.pid)) }
         }
         .help("PID \(group.pid)")
@@ -175,6 +183,20 @@ struct OtherListenerRow: View {
     }
 
     private var url: URL? { Format.localURL(port: group.port) }
+
+    /// Only offer for a real project-looking folder: not `/` or the home folder itself.
+    private var canAddAsServer: Bool {
+        guard let cwd = group.cwd else { return false }
+        return cwd != "/" && cwd != NSHomeDirectory()
+    }
+
+    /// Pre-fills the Add window with the listener's working directory (AGENTS.md §9.1).
+    private func addAsServer() {
+        guard let cwd = group.cwd else { return }
+        addServerModel.load(URL(fileURLWithPath: cwd, isDirectory: true))
+        NSApp.activate()
+        openWindow(id: WindowID.addServer)
+    }
 
     private func open() {
         if let url { NSWorkspace.shared.open(url) }

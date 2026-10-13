@@ -1,0 +1,30 @@
+{
+  "proposals": [
+    {
+      "label": "web",
+      "argv": [
+        "bin/rails",
+        "server",
+        "-p",
+        "3000"
+      ],
+      "resolvedScript": "web: bin/rails server -p 3000",
+      "source": "Procfile.dev",
+      "framework": null,
+      "predictedPort": 3000,
+      "notes": []
+    },
+    {
+      "label": "css",
+      "argv": [
+        "bin/rails",
+        "tailwindcss:watch"
+      ],
+      "resolvedScript": "css: bin/rails tailwindcss:watch",
+      "source": "Procfile.dev",
+      "framework": null,
+      "predictedPort": null,
+      "notes": []
+    }
+  ]
+}

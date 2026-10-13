@@ -51,6 +51,8 @@ targets:
       - package: RunnerKit
         product: Models
       - package: RunnerKit
+        product: Detection
+      - package: RunnerKit
         product: Registry
       - package: RunnerKit
         product: Scanner

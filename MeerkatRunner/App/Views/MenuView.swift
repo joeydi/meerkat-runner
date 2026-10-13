@@ -6,12 +6,14 @@ import SwiftUI
 /// The dropdown (AGENTS.md §9.1, DESIGN.md §4.1). Fixed 360 pt wide.
 struct MenuView: View {
     @Environment(ServerRegistry.self) private var registry
+    @Environment(AddServerModel.self) private var addServerModel
     @Environment(\.openWindow) private var openWindow
     @State private var filter = ""
     @State private var showAllOther = false
     /// Measured height of the section list. A bare ScrollView has no ideal height, and
     /// MenuBarExtra(.window) sizes itself to ideal height, so the list would collapse to zero.
     @State private var listHeight: CGFloat = 0
+    @State private var isDropTargeted = false
 
     /// Other listeners shown before "Show N more" (DESIGN.md §4.1).
     private static let otherListenerLimit = 5
@@ -37,6 +39,25 @@ struct MenuView: View {
             footer
         }
         .frame(width: Tokens.popoverWidth)
+        // Drop a project folder onto the menu to add it (AGENTS.md §5 flow, DESIGN.md §5).
+        .dropDestination(for: URL.self) { urls, _ in
+            let folder = urls.first { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+            }
+            guard let folder else { return false }
+            addServerModel.load(folder)
+            openAddWindow()
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
+        }
         .onAppear { registry.setPolling(menuOpen: true) }
         .onDisappear {
             registry.setPolling(menuOpen: false)
@@ -199,6 +220,11 @@ struct MenuView: View {
     }
 
     private func addServer() {
+        addServerModel.requestFolderPicker()
+        openAddWindow()
+    }
+
+    private func openAddWindow() {
         NSApp.activate()
         openWindow(id: WindowID.addServer)
     }

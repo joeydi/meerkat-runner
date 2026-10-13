@@ -1,0 +1,11 @@
+set dotenv-load := true
+
+# Start the dev server
+dev:
+    pnpm dev --port 4000
+
+start:
+  node server.js
+
+build:
+  pnpm build

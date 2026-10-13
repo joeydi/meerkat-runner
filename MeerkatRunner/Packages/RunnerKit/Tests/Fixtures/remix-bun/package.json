@@ -1,0 +1,18 @@
+{
+  "name": "remix-bun",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "remix vite:dev",
+    "build": "remix vite:build",
+    "start": "remix-serve ./build/server/index.js"
+  },
+  "dependencies": {
+    "@remix-run/node": "^2.12.0",
+    "@remix-run/serve": "^2.12.0"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "^2.12.0",
+    "vite": "^5.4.0"
+  }
+}
