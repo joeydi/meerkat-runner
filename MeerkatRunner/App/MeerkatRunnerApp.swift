@@ -1,5 +1,7 @@
 import AppKit
 import Registry
+import Store
+import Supervisor
 import SwiftUI
 
 @main
@@ -57,14 +59,49 @@ enum MeerkatLinks {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let registry = ServerRegistry()
+    let registry: ServerRegistry = {
+        let paths = StorePaths.standard
+        return ServerRegistry(
+            store: ProjectStore(paths: paths),
+            supervisor: ProcessSupervisor(logsDirectory: paths.logsDirectory, runtimeFile: paths.runtimeFile)
+        )
+    }()
     let addServer = AddServerModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { await registry.start() }
     }
 
-    // TODO(v0.2): "On quit" setting (§6.7) — stop managed servers (default) / leave running / ask.
+    /// Settings › On quit (§6.7): stop managed servers (default), leave them running, or ask.
+    /// Servers left running are re-adopted on the next launch.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard registry.hasManagedServers else { return .terminateNow }
+        let raw = UserDefaults.standard.string(forKey: QuitBehaviour.defaultsKey) ?? ""
+        switch QuitBehaviour(rawValue: raw) ?? .stopManaged {
+        case .leaveRunning:
+            return .terminateNow
+        case .ask:
+            let alert = NSAlert()
+            alert.messageText = "Stop the servers Runner started?"
+            alert.informativeText = "Servers you leave running keep going; Runner picks them up again next time it opens."
+            alert.addButton(withTitle: "Stop and Quit")
+            alert.addButton(withTitle: "Leave Running")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate()
+            switch alert.runModal() {
+            case .alertFirstButtonReturn: break
+            case .alertSecondButtonReturn: return .terminateNow
+            default: return .terminateCancel
+            }
+        case .stopManaged:
+            break
+        }
+        Task {
+            await registry.stopAllManaged()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
 }
 
 /// Menu bar icon with the running-count badge (hidden at 0).

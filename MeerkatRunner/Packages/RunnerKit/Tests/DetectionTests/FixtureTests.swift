@@ -173,6 +173,27 @@ final class FixtureTests: XCTestCase {
         )
     }
 
+    func testEnvFileValues() {
+        let text = """
+        # comment
+        API_KEY=abc123
+        export PORT=3000
+        QUOTED="a b # not a comment"
+        SINGLE='x y'
+        MULTI="line1\\nline2"
+        TRAILING=value # comment
+        bad name=1
+        """
+        XCTAssertEqual(EnvFile.values(in: text), [
+            "API_KEY": "abc123",
+            "PORT": "3000",
+            "QUOTED": "a b # not a comment",
+            "SINGLE": "x y",
+            "MULTI": "line1\nline2",
+            "TRAILING": "value",
+        ])
+    }
+
     func testPackageManagerFallsBackToPackageManagerField() {
         let files = FileSnapshot(topLevel: ["package.json"], entries: [:])
         XCTAssertEqual(NodeDetector.packageManager(files: files, packageJSON: ["packageManager": "yarn@4.5.0"]).name, "yarn")

@@ -12,8 +12,8 @@ import SwiftUI
 /// Keyboard: Esc = Don't Run. Return is deliberately **not** bound to Approve: approval must be a
 /// click (open question §13 Q2). Focus starts on Don't Run.
 ///
-/// TODO(v0.2 step 3): "Approve and Start", and "Run previous version" when the previous argv command
-/// can be reconstructed exactly. Referenced local script files with Reveal in Finder.
+/// TODO(v0.3): "Run previous version" when the previous argv command can be reconstructed exactly,
+/// and referenced local script files with Reveal in Finder.
 struct ReapprovalSheet: View {
     let projectID: UUID?
     @Environment(ServerRegistry.self) private var registry
@@ -62,7 +62,7 @@ struct ReapprovalSheet: View {
                 Button("Don't Run") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .focused($dontRunFocused)
-                Button("Approve") { approve() }
+                Button("Approve and Start") { approve() }
                     .buttonStyle(.borderedProminent)
                     .disabled(current == nil || isSaving)
                 // No keyboard shortcut on Approve: approving always takes a click.
@@ -141,6 +141,15 @@ struct ReapprovalSheet: View {
         isLoading = false
     }
 
+    private func start(_ projectID: UUID) async {
+        let name = row?.project.name ?? "the server"
+        do {
+            try await registry.startProject(projectID)
+        } catch ServerRegistry.StartError.failed(let message) {
+            Alerts.show("Couldn't start \(name)", message)
+        } catch {}
+    }
+
     private func approve() {
         guard let projectID, let shown = current else { return }
         isSaving = true
@@ -150,6 +159,7 @@ struct ReapprovalSheet: View {
             do {
                 try await registry.approve(projectID: projectID, shown: shown)
                 dismiss()
+                await start(projectID)
             } catch ServerRegistry.ProjectError.changedWhileReviewing {
                 errorMessage = "The files changed again while this was open. Review the updated diff."
                 await load()

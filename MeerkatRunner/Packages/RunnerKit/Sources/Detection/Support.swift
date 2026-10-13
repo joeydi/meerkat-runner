@@ -158,6 +158,40 @@ public enum EnvFile {
         }
     }
 
+    /// `NAME=value` pairs for the child's environment (AGENTS.md §6.1). Supports `export`, single and
+    /// double quotes (with `\n` escapes in double quotes) and trailing ` # comments` on unquoted values.
+    /// Values are never logged or displayed.
+    public static func values(in contents: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for raw in contents.split(whereSeparator: \.isNewline) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") { continue }
+            if line.hasPrefix("export ") { line = String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+            guard let equals = line.firstIndex(of: "=") else { continue }
+            let name = String(line[..<equals]).trimmingCharacters(in: .whitespaces)
+            guard keys(in: "\(name)=").first == name else { continue }
+            var value = String(line[line.index(after: equals)...]).trimmingCharacters(in: .whitespaces)
+            if value.count >= 2, value.hasPrefix("\""), let end = value.dropFirst().firstIndex(of: "\"") {
+                value = String(value[value.index(after: value.startIndex)..<end])
+                    .replacingOccurrences(of: "\\n", with: "\n")
+            } else if value.count >= 2, value.hasPrefix("'"), let end = value.dropFirst().firstIndex(of: "'") {
+                value = String(value[value.index(after: value.startIndex)..<end])
+            } else if let comment = value.range(of: " #") {
+                value = String(value[..<comment.lowerBound]).trimmingCharacters(in: .whitespaces)
+            }
+            result[name] = value
+        }
+        return result
+    }
+
+    /// Reads and parses an env file (capped read). Empty if unreadable.
+    public static func values(at url: URL) -> [String: String] {
+        guard case .contents(let data)? = FileSnapshot.readEntry(url), let text = String(data: data, encoding: .utf8) else {
+            return [:]
+        }
+        return values(in: text)
+    }
+
     /// Counts variables in an env file on disk (capped read). nil if unreadable.
     public static func keyCount(at url: URL) -> Int? {
         guard case .contents(let data)? = FileSnapshot.readEntry(url),

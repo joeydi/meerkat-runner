@@ -24,7 +24,8 @@ public enum ScriptResolver {
 
     /// Current fingerprint inputs for `project`. If the command's script can no longer be found
     /// (e.g. the `dev` script was deleted), `resolvedScript` is nil, which changes the fingerprint.
-    public static func currentInput(for project: Project) -> ScriptFingerprint.Input {
+    /// - Parameter wrapper: the version-manager prefix the start would use (part of the fingerprint).
+    public static func currentInput(for project: Project, wrapper: [String] = []) -> ScriptFingerprint.Input {
         let folder = URL(fileURLWithPath: project.path, isDirectory: true)
         var resolvedScript: String?
         var sourceMaterial: Data?
@@ -39,7 +40,8 @@ public enum ScriptResolver {
                 sourceMaterial = files.data(source)
             }
         }
-        // TODO(v0.2 step 3): version-manager wrapper (§6.1) once the shell environment is captured.
-        return ScriptFingerprint.Input(project: project, resolvedScript: resolvedScript, sourceMaterial: sourceMaterial)
+        return ScriptFingerprint.Input(
+            project: project, resolvedScript: resolvedScript, sourceMaterial: sourceMaterial, wrapper: wrapper
+        )
     }
 }

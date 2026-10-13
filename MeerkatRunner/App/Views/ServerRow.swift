@@ -74,16 +74,20 @@ struct ServerRow: View {
         case .running(let managed, let listeners, _):
             HStack(spacing: 4) {
                 if isHovering {
-                    IconButton(symbol: "arrow.up.forward.square", label: "Open in Browser") { open() }
+                    if row.project.port != nil {
+                        IconButton(symbol: "arrow.up.forward.square", label: "Open in Browser") { open() }
+                    }
                     if managed {
                         IconButton(symbol: "text.alignleft", label: "Show Logs") { showLogs() }
+                        IconButton(symbol: "stop.fill", label: "Stop") { stop() }
                     } else {
-                        IconButton(symbol: "arrow.clockwise", label: "Restart in Runner") {
-                            // TODO(v0.2): Restart in Runner (§6.5).
-                        }
-                    }
-                    IconButton(symbol: "stop.fill", label: "Stop") {
-                        // TODO(v0.2): stop; terminal-started servers confirm first (DESIGN.md §5).
+                        // TODO(v0.2 step 3b): Restart in Runner and Stop for terminal-started servers (§6.5).
+                        IconButton(symbol: "arrow.clockwise", label: "Restart in Runner (coming next)") {}
+                            .disabled(true)
+                            .opacity(0.4)
+                        IconButton(symbol: "stop.fill", label: "Stop (coming next for servers started in Terminal)") {}
+                            .disabled(true)
+                            .opacity(0.4)
                     }
                 } else {
                     if listeners.contains(where: \.isLANVisible) {
@@ -96,23 +100,56 @@ struct ServerRow: View {
                 }
             }
         case .starting, .stopping:
-            ProgressView().controlSize(.small)
+            HStack(spacing: 4) {
+                if isHovering, registry.managed[row.id] != nil {
+                    IconButton(symbol: "text.alignleft", label: "Show Logs") { showLogs() }
+                }
+                ProgressView().controlSize(.small)
+            }
         case .stopped:
-            // TODO(v0.2 step 3): start through ApprovalGate.
-            IconButton(symbol: "play.fill", label: "Start (arrives in the next v0.2 step)") {}
-                .disabled(true)
-                .opacity(0.4)
+            HStack(spacing: 4) {
+                if isHovering {
+                    IconButton(symbol: "text.alignleft", label: "Show Logs") { showLogs() }
+                }
+                IconButton(symbol: "play.fill", label: "Start") { start() }
+            }
         case .crashed(let code, _):
             HStack(spacing: 4) {
                 Text("Exited (\(code))").font(Tokens.Font.meta).foregroundStyle(Tokens.Colors.errorText)
-                IconButton(symbol: "play.fill", label: "Start (arrives in the next v0.2 step)") {}
-                    .disabled(true)
-                    .opacity(0.4)
+                IconButton(symbol: "text.alignleft", label: "View Logs") { showLogs() }
+                IconButton(symbol: "play.fill", label: "Start") { start() }
             }
         case .needsReapproval:
             Button("Review") { review() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+        }
+    }
+
+    /// Always through the registry → approval gate; a changed script opens the review window instead.
+    private func start() {
+        let id = row.project.id
+        let name = row.project.name
+        Task {
+            do {
+                try await registry.startProject(id)
+            } catch ServerRegistry.StartError.needsApproval {
+                review()
+            } catch ServerRegistry.StartError.failed(let message) {
+                Alerts.show("Couldn't start \(name)", message)
+            } catch {}
+        }
+    }
+
+    private func stop() {
+        let id = row.project.id
+        let name = row.project.name
+        Task {
+            do {
+                try await registry.stopProject(id)
+            } catch ServerRegistry.StopError.failed(let message) {
+                Alerts.show("Couldn't stop \(name)", message)
+            } catch {}
         }
     }
 

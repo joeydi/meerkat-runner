@@ -45,6 +45,9 @@ int cpi_pid_count_hint(uid_t uid);
 /// Fills `buffer` with PIDs owned by `uid` (`proc_listpids(PROC_UID_ONLY, …)`). Returns the count, or -1.
 int cpi_list_pids(uid_t uid, pid_t *buffer, int capacity);
 
+/// Fills `buffer` with PIDs in process group `pgid` (`proc_listpids(PROC_PGRP_ONLY, …)`). Returns the count, or -1.
+int cpi_list_pgrp_pids(pid_t pgid, pid_t *buffer, int capacity);
+
 /// `proc_pidinfo(PROC_PIDTBSDINFO)`. Returns 0, or -1.
 int cpi_bsd_info(pid_t pid, cpi_bsdinfo *out);
 

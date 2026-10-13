@@ -1,0 +1,4 @@
+module CSpawn {
+    header "CSpawn.h"
+    export *
+}

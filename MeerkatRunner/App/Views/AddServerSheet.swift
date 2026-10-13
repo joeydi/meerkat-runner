@@ -72,14 +72,12 @@ struct AddServerSheet: View {
                 Spacer()
                 Button("Cancel") { close() }
                     .keyboardShortcut(.cancelAction)
-                Button("Add") { save() }
+                Button("Add") { save(start: false) }
                     .disabled(!model.canAdd || isSaving)
-                // TODO(v0.2 step 3): enable once the supervisor can start servers.
-                Button("Add and Start") {}
+                Button("Add and Start") { save(start: true) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(true)
-                    .help("Starting servers arrives in the next v0.2 step.")
+                    .disabled(!model.canAdd || isSaving)
             }
             .controlSize(.large)
         }
@@ -269,7 +267,7 @@ struct AddServerSheet: View {
         DispatchQueue.main.async { chooseFolder() }
     }
 
-    private func save() {
+    private func save(start: Bool) {
         guard let made = model.makeProject() else { return }
         isSaving = true
         errorMessage = nil
@@ -278,6 +276,7 @@ struct AddServerSheet: View {
             do {
                 try await registry.add(made.project, shownScript: made.shownScript)
                 close()
+                if start { await startAdded(made.project) }
             } catch ServerRegistry.ProjectError.changedWhileReviewing {
                 errorMessage = "The project's files changed while this window was open. Review the command again."
                 if let folder = model.folder { model.load(folder) }
@@ -285,6 +284,14 @@ struct AddServerSheet: View {
                 errorMessage = "Couldn't save the project."
             }
         }
+    }
+
+    private func startAdded(_ project: Project) async {
+        do {
+            try await registry.startProject(project.id)
+        } catch ServerRegistry.StartError.failed(let message) {
+            Alerts.show("Couldn't start \(project.name)", message)
+        } catch {}
     }
 
     private func close() {

@@ -57,6 +57,16 @@ public enum ProcessInfoReader {
         return pids.prefix(min(Int(count), pids.count)).filter { $0 > 0 }
     }
 
+    /// Members of process group `pgid` (any owner; callers verify uid before signalling).
+    public static func processGroupMembers(_ pgid: pid_t) throws(ProcInfoError) -> [pid_t] {
+        var pids = [pid_t](repeating: 0, count: 1_024)
+        let count = pids.withUnsafeMutableBufferPointer { buffer in
+            cpi_list_pgrp_pids(pgid, buffer.baseAddress, Int32(buffer.count))
+        }
+        guard count >= 0 else { throw ProcInfoError(errno: errno) }
+        return pids.prefix(min(Int(count), pids.count)).filter { $0 > 0 }
+    }
+
     /// Step 5: `proc_pidinfo(pid, PROC_PIDTBSDINFO, …)`.
     public static func bsdInfo(pid: pid_t) throws(ProcInfoError) -> BSDInfo {
         var raw = cpi_bsdinfo()

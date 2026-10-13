@@ -201,9 +201,9 @@ struct MenuView: View {
             FooterRow(title: "Add Server from Folder…", shortcut: "⌘N") { addServer() }
                 .keyboardShortcut("n", modifiers: .command)
             FooterRow(title: "Stop All Managed Servers") {
-                // TODO(v0.2): stop managed servers only; terminal-started ones are excluded.
+                Task { await registry.stopAllManaged() }
             }
-            .disabled(!registry.runningRows.contains { $0.state.isManaged })
+            .disabled(!registry.hasManagedServers)
             .help("Stops servers Runner started. Servers started in Terminal are left running.")
             meerkatLink("Made by Meerkat")
                 .padding(.top, 8)
