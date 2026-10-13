@@ -67,6 +67,7 @@ public final class ServerRegistry {
 
     /// Loads the store and starts polling. Call once at launch.
     public func start() async {
+        logger.info("registry starting")
         do {
             let result = try await store.load()
             projects = result.projects.map { ProjectRow(project: $0, state: .stopped) }
@@ -111,7 +112,10 @@ public final class ServerRegistry {
         }
 
         let groups = ListenerGroup.group(unmatched)
-        if groups != otherListeners { otherListeners = groups }
+        if groups != otherListeners {
+            logger.debug("apply: \(listeners.count, privacy: .public) listeners → \(groups.count, privacy: .public) other rows")
+            otherListeners = groups
+        }
 
         for index in projects.indices {
             let current = projects[index].state

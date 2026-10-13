@@ -20,6 +20,7 @@ public actor PortScanner {
     }
 
     private let uid: uid_t
+    private let logger = RunnerLog.logger(category: "scanner")
     private var cache: [pid_t: Metadata] = [:]
 
     public init(uid: uid_t = getuid()) {
@@ -33,14 +34,31 @@ public actor PortScanner {
     /// (e.g. a forked worker) is reported once, for the lowest PID. Use `ListenerGroup.group` to merge
     /// v4 + v6 listeners into rows.
     public func scan() -> [Listener] {
-        guard let pids = try? ProcessInfoReader.listPIDs(uid: uid) else { return [] }
+        let pids: [pid_t]
+        do {
+            pids = try ProcessInfoReader.listPIDs(uid: uid)
+        } catch {
+            logger.error("scan: listing PIDs failed: \(String(describing: error), privacy: .public)")
+            return []
+        }
 
         var listeners: [Listener] = []
         var seen = Set<SocketKey>()
         var live = Set<pid_t>()
+        // Aggregate counts only (never per-PID) for diagnostics.
+        var socketReadFailures = 0
+        var permissionDenied = 0
 
         for pid in pids.sorted() {
-            guard let sockets = try? ProcessInfoReader.listenSockets(pid: pid), !sockets.isEmpty,
+            let sockets: [RawListenSocket]
+            do {
+                sockets = try ProcessInfoReader.listenSockets(pid: pid)
+            } catch {
+                socketReadFailures += 1
+                if error == .permissionDenied { permissionDenied += 1 }
+                continue
+            }
+            guard !sockets.isEmpty,
                   let info = try? ProcessInfoReader.bsdInfo(pid: pid), info.uid == uid
             else { continue }
             live.insert(pid)
@@ -70,6 +88,9 @@ public actor PortScanner {
         }
 
         cache = cache.filter { live.contains($0.key) }
+        logger.debug(
+            "scan: \(pids.count, privacy: .public) pids, \(listeners.count, privacy: .public) listeners, \(socketReadFailures, privacy: .public) fd-list failures (\(permissionDenied, privacy: .public) EPERM)"
+        )
         return listeners.sorted { ($0.port, $0.pid) < ($1.port, $1.pid) }
     }
 
