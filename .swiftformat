@@ -1,0 +1,7 @@
+--swiftversion 6.0
+--maxwidth 140
+--indent 4
+--wraparguments before-first
+--wrapcollections before-first
+--self remove
+--exclude MeerkatRunner/Packages/RunnerKit/.build,MeerkatRunner/Packages/RunnerKit/Tests/Fixtures

@@ -1,0 +1,18 @@
+{
+  "proposals": [
+    {
+      "label": "pnpm dev",
+      "argv": ["pnpm", "run", "dev"],
+      "resolvedScript": "next dev --turbopack",
+      "source": "package.json",
+      "predictedPort": 3000
+    },
+    {
+      "label": "pnpm start",
+      "argv": ["pnpm", "run", "start"],
+      "resolvedScript": "next start",
+      "source": "package.json",
+      "predictedPort": 3000
+    }
+  ]
+}
