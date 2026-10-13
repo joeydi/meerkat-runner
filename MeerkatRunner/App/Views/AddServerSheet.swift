@@ -12,6 +12,7 @@ struct AddServerSheet: View {
     @Environment(AddServerModel.self) private var model
     @Environment(ServerRegistry.self) private var registry
     @Environment(\.dismiss) private var dismiss
+    @State private var isDropTargeted = false
 
     var body: some View {
         @Bindable var model = model
@@ -74,6 +75,25 @@ struct AddServerSheet: View {
         }
         .padding(24)
         .frame(width: 540)
+        // Drag a project folder from Finder onto this window. (The menu itself can't take drops:
+        // a MenuBarExtra window closes as soon as Finder becomes active.)
+        .dropDestination(for: URL.self) { urls, _ in
+            let folder = urls.first { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+            }
+            guard let folder else { return false }
+            model.load(folder)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .padding(6)
+                    .allowsHitTesting(false)
+            }
+        }
         .onAppear(perform: showPickerIfRequested)
         .onChange(of: model.wantsFolderPicker) { showPickerIfRequested() }
     }
@@ -110,7 +130,7 @@ struct AddServerSheet: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
             if model.folder == nil {
-                cardMessage("Choose a folder to see how it starts.")
+                cardMessage("Choose a folder, or drag one here from Finder, to see how it starts.")
             } else if model.isDetecting {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

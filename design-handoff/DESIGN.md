@@ -256,7 +256,7 @@ When it's opened from an auto-start notification, the primary button reads "Appr
 | Esc | Clear filter, then close |
 | Type any character | Focuses the filter |
 
-Drag a folder from Finder onto the open dropdown → Add sheet for that folder. Show a dashed accent outline around the list while dragging.
+Drag a folder from Finder onto the Add server window → detect that folder. Show a dashed accent outline around the window content while dragging. (The dropdown can't take drops: it closes as soon as Finder becomes active.)
 
 Stop on a terminal-started server shows a confirmation popover anchored to the button: "Stop `<name>`? It was started in Terminal. The terminal stays open." [Cancel] [Stop]. Managed servers stop without confirmation.
 

@@ -223,7 +223,7 @@ Map argv/executable to a framework label: `next dev` → Next.js, `vite` → Vit
 
 ### Flow
 
-1. `NSOpenPanel` (directories only) or drag a folder onto the menu.
+1. `NSOpenPanel` (directories only), or drag a folder onto the Add server window. (Not onto the menu: a `MenuBarExtra(.window)` closes as soon as Finder becomes active, so it can't receive a drag.)
 2. Run all detectors concurrently against the folder. Detectors are **pure functions of file contents**: they read files with a 1 MB size cap per file and MUST NOT execute anything, spawn processes, or touch the network.
 3. Merge results into ranked `Proposal`s; show the Add sheet (§9.2).
 4. User picks or edits a proposal → approval gate (§8.2) → saved.
