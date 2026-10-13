@@ -40,7 +40,8 @@ let package = Package(
         .testTarget(name: "ApprovalTests", dependencies: ["Approval", "Models"]),
         .testTarget(name: "StoreTests", dependencies: ["Store", "Models"]),
         .testTarget(name: "SupervisorTests", dependencies: ["Supervisor", "Models"]),
-        .testTarget(name: "ScannerTests", dependencies: ["Scanner", "Models"]),
+        .testTarget(name: "ScannerTests", dependencies: ["Scanner", "Models", "ProcInfo"]),
+        .testTarget(name: "RegistryTests", dependencies: ["Registry", "Models"]),
     ],
     swiftLanguageModes: [.v6]
 )

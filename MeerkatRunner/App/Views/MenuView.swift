@@ -8,6 +8,10 @@ struct MenuView: View {
     @Environment(ServerRegistry.self) private var registry
     @Environment(\.openWindow) private var openWindow
     @State private var filter = ""
+    @State private var showAllOther = false
+
+    /// Other listeners shown before "Show N more" (DESIGN.md §4.1).
+    private static let otherListenerLimit = 5
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,7 +33,10 @@ struct MenuView: View {
         }
         .frame(width: Tokens.popoverWidth)
         .onAppear { registry.setPolling(menuOpen: true) }
-        .onDisappear { registry.setPolling(menuOpen: false) }
+        .onDisappear {
+            registry.setPolling(menuOpen: false)
+            showAllOther = false
+        }
     }
 
     // MARK: - Header
@@ -96,16 +103,24 @@ struct MenuView: View {
         let needsApproval = registry.needsApprovalRows.filter(matchesRow)
         let stopped = registry.stoppedRows.filter(matchesRow)
         let other = registry.visibleOtherListeners.filter(matchesListener)
+        // While filtering, show every match; otherwise collapse to the first few.
+        let collapsed = filter.isEmpty && !showAllOther && other.count > Self.otherListenerLimit
+        let shownOther = collapsed ? Array(other.prefix(Self.otherListenerLimit)) : other
         let groups: [(String, AnyView)] = [
             ("Running", AnyView(ForEach(running) { ServerRow(row: $0) })),
             ("Needs approval", AnyView(ForEach(needsApproval) { ServerRow(row: $0) })),
             ("Stopped", AnyView(ForEach(stopped) { ServerRow(row: $0) })),
-            ("Other listeners", AnyView(ForEach(other, id: \.self) { OtherListenerRow(listener: $0) })),
+            ("Other listeners", AnyView(VStack(spacing: 0) {
+                ForEach(shownOther) { OtherListenerRow(group: $0) }
+                if collapsed {
+                    ShowMoreRow(count: other.count - shownOther.count) { showAllOther = true }
+                }
+            })),
         ]
         let counts = [running.count, needsApproval.count, stopped.count, other.count]
         let visible = groups.indices.filter { counts[$0] > 0 }
 
-        // TODO(v0.1): collapse Other listeners to 5 with "Show N more"; keyboard selection (§9.1).
+        // TODO(v0.3): keyboard selection (§9.1, DESIGN.md §5).
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(visible, id: \.self) { index in
                 if index != visible.first {
@@ -124,9 +139,9 @@ struct MenuView: View {
         return haystack.contains { $0.localizedCaseInsensitiveContains(filter) }
     }
 
-    private func matchesListener(_ listener: Listener) -> Bool {
+    private func matchesListener(_ group: ListenerGroup) -> Bool {
         guard !filter.isEmpty else { return true }
-        let haystack = [listener.processName, listener.cwd ?? "", String(listener.port)]
+        let haystack = [group.processName, group.cwd ?? "", String(group.port)]
         return haystack.contains { $0.localizedCaseInsensitiveContains(filter) }
     }
 
@@ -184,16 +199,35 @@ struct MenuView: View {
     }
 }
 
+private struct ShowMoreRow: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button("Show \(count) more", action: action)
+            .buttonStyle(.plain)
+            .font(Tokens.Font.meta)
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 6)
+            .padding(.leading, 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+}
+
 private struct FooterRow: View {
     let title: String
     var shortcut: String?
     let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
             HStack {
                 Text(title)
+                    // Plain buttons don't dim when disabled; do it explicitly.
+                    .foregroundStyle(isEnabled ? HierarchicalShapeStyle.primary : .tertiary)
                 Spacer()
                 if let shortcut {
                     Text(shortcut).foregroundStyle(.secondary)
@@ -202,7 +236,10 @@ private struct FooterRow: View {
             .padding(.horizontal, 10)
             .frame(height: 30)
             .contentShape(Rectangle())
-            .background(isHovering ? Tokens.Colors.fillControl : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .background(
+                isHovering && isEnabled ? Tokens.Colors.fillControl : .clear,
+                in: RoundedRectangle(cornerRadius: 6)
+            )
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }

@@ -75,3 +75,40 @@ public enum AddressFamily: Hashable, Sendable {
     case v4
     case v6
 }
+
+/// One process listening on one port, possibly on several addresses (e.g. `127.0.0.1` and `::1`).
+/// The dropdown shows one row per group (AGENTS.md §4 step 6).
+public struct ListenerGroup: Identifiable, Hashable, Sendable {
+    /// Non-empty; every element has the same `pid` and `port`.
+    public var listeners: [Listener]
+
+    public init?(_ listeners: [Listener]) {
+        guard let first = listeners.first,
+              listeners.allSatisfy({ $0.pid == first.pid && $0.port == first.port })
+        else { return nil }
+        self.listeners = listeners
+    }
+
+    public var id: String { "\(primary.pid):\(primary.port)" }
+    public var primary: Listener { listeners[0] }
+    public var pid: pid_t { primary.pid }
+    public var port: Int { primary.port }
+    public var processName: String { primary.processName }
+    public var cwd: String? { primary.cwd }
+    /// Any wildcard bind makes the server reachable from the LAN.
+    public var isLANVisible: Bool { listeners.contains(where: \.isLANVisible) }
+
+    /// Groups listeners by `(pid, port)`, sorted by port then PID. IPv4 sorts before IPv6 within a group.
+    public static func group(_ listeners: [Listener]) -> [ListenerGroup] {
+        struct Key: Hashable {
+            var pid: pid_t
+            var port: Int
+        }
+        let grouped = Dictionary(grouping: listeners) { Key(pid: $0.pid, port: $0.port) }
+        return grouped.values
+            .compactMap { members in
+                ListenerGroup(members.sorted { ($0.family == .v4 ? 0 : 1) < ($1.family == .v4 ? 0 : 1) })
+            }
+            .sorted { ($0.port, $0.pid) < ($1.port, $1.pid) }
+    }
+}

@@ -32,10 +32,4 @@ final class AddressClassifierTests: XCTestCase {
         )
         XCTAssertTrue(SystemListeners.isSystemListener(airplay))
     }
-
-    func testScanSkeleton() async throws {
-        // TODO(v0.1): start a real listener (Scripts/test-servers) and assert it appears within one poll;
-        // v4+v6 de-dup; wildcard vs loopback classification end-to-end.
-        throw XCTSkip("PortScanner.scan() not implemented yet (v0.1)")
-    }
 }

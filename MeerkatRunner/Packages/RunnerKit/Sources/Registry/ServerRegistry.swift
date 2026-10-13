@@ -12,8 +12,8 @@ import Supervisor
 public final class ServerRegistry {
     /// Registered projects: running, stopped, crashed, needs approval.
     public private(set) var projects: [ProjectRow] = []
-    /// Unmatched listeners. View-only: Runner never stops these.
-    public private(set) var otherListeners: [Listener] = []
+    /// Unmatched listeners, one group per (process, port). View-only: Runner never stops these.
+    public private(set) var otherListeners: [ListenerGroup] = []
     /// Set when the store's MAC failed and approvals were cleared; the UI shows a one-time warning.
     public private(set) var storeIntegrityWarning = false
     /// Settings: hide `SystemListeners` from Other listeners.
@@ -54,11 +54,10 @@ public final class ServerRegistry {
         }
     }
 
-    public var visibleOtherListeners: [Listener] {
-        let listeners = hideSystemListeners
-            ? otherListeners.filter { !SystemListeners.isSystemListener($0) }
-            : otherListeners
-        return listeners.sorted { $0.port < $1.port }
+    /// Other listeners after the "Hide system listeners" setting, sorted by port.
+    public var visibleOtherListeners: [ListenerGroup] {
+        guard hideSystemListeners else { return otherListeners }
+        return otherListeners.filter { !SystemListeners.isSystemListener($0.primary) }
     }
 
     /// Menu bar badge: running count (hidden at 0).
@@ -93,9 +92,39 @@ public final class ServerRegistry {
         }
     }
 
-    /// TODO(v0.1/v0.2): match listeners to projects with `ProjectMatcher` (using supervisor PGIDs),
-    /// de-duplicate v4+v6 per port, and update row states.
-    private func apply(_ listeners: [Listener]) {
-        otherListeners = listeners
+    /// Splits a scan into project matches and other listeners. Only assigns observed properties when
+    /// they actually change, so an idle poll doesn't re-render the menu.
+    ///
+    /// TODO(v0.2): pass supervisor/runtime.json PGIDs to the matcher, mark those rows `managed`, and keep
+    /// `.starting` / `.stopping` / `.crashed` states owned by the supervisor.
+    func apply(_ listeners: [Listener]) {
+        let matcher = ProjectMatcher()
+        let registered = projects.map(\.project)
+        var matched: [UUID: [Listener]] = [:]
+        var unmatched: [Listener] = []
+        for listener in listeners {
+            if let id = matcher.match(listener, projects: registered) {
+                matched[id, default: []].append(listener)
+            } else {
+                unmatched.append(listener)
+            }
+        }
+
+        let groups = ListenerGroup.group(unmatched)
+        if groups != otherListeners { otherListeners = groups }
+
+        for index in projects.indices {
+            let current = projects[index].state
+            let next: ServerState
+            if let found = matched[projects[index].id] {
+                let since = found.map(\.startTime.date).min() ?? .now
+                next = .running(managed: false, listeners: found, since: since)
+            } else if current.isRunning {
+                next = .stopped
+            } else {
+                next = current
+            }
+            if next != current { projects[index].state = next }
+        }
     }
 }

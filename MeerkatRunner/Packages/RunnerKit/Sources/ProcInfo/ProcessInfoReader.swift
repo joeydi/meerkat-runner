@@ -38,38 +38,79 @@ public struct RawListenSocket: Sendable, Equatable {
     public var localAddress: [UInt8]
 }
 
-/// Thin, synchronous wrappers over libproc. Every `Unsafe*` buffer has an explicit size check.
-///
-/// TODO(v0.1): implement each call per AGENTS.md §4 "Algorithm (one scan)".
+/// Thin, synchronous wrappers over the CProcInfo shim (AGENTS.md §4 "Algorithm (one scan)").
+/// Buffers are sized explicitly and passed with their capacity; the shim never writes past it.
 public enum ProcessInfoReader {
+    /// Max listening sockets read per process.
+    static let maxSocketsPerProcess = 256
+
     /// Step 1: `proc_listpids(PROC_UID_ONLY, getuid(), …)`.
     public static func listPIDs(uid: uid_t = getuid()) throws(ProcInfoError) -> [pid_t] {
-        // TODO(v0.1): call proc_listpids twice (size query, then fill) with headroom for new PIDs.
-        []
+        let hint = cpi_pid_count_hint(uid)
+        guard hint > 0 else { throw ProcInfoError(errno: errno) }
+        // Headroom for processes started between the two calls.
+        var pids = [pid_t](repeating: 0, count: Int(hint) + 64)
+        let count = pids.withUnsafeMutableBufferPointer { buffer in
+            cpi_list_pids(uid, buffer.baseAddress, Int32(buffer.count))
+        }
+        guard count >= 0 else { throw ProcInfoError(errno: errno) }
+        return pids.prefix(min(Int(count), pids.count)).filter { $0 > 0 }
     }
 
     /// Step 5: `proc_pidinfo(pid, PROC_PIDTBSDINFO, …)`.
     public static func bsdInfo(pid: pid_t) throws(ProcInfoError) -> BSDInfo {
-        // TODO(v0.1)
-        throw .noSuchProcess
+        var raw = cpi_bsdinfo()
+        guard cpi_bsd_info(pid, &raw) == 0 else { throw ProcInfoError(errno: errno) }
+        return BSDInfo(
+            pid: raw.pid,
+            ppid: raw.ppid,
+            pgid: raw.pgid,
+            uid: raw.uid,
+            name: cString(fromTuple: raw.name),
+            startSeconds: raw.start_sec,
+            startMicroseconds: raw.start_usec
+        )
     }
 
     /// Steps 2–4: `PROC_PIDLISTFDS` → `PROC_PIDFDSOCKETINFO`, keeping TCP sockets in `TSI_S_LISTEN`.
     public static func listenSockets(pid: pid_t) throws(ProcInfoError) -> [RawListenSocket] {
-        // TODO(v0.1)
-        []
+        var buffer = [cpi_listen_socket](repeating: cpi_listen_socket(), count: maxSocketsPerProcess)
+        let count = buffer.withUnsafeMutableBufferPointer { pointer in
+            cpi_listen_sockets(pid, pointer.baseAddress, Int32(pointer.count))
+        }
+        guard count >= 0 else { throw ProcInfoError(errno: errno) }
+        return buffer.prefix(min(Int(count), buffer.count)).map { socket in
+            let isIPv6 = socket.is_ipv6 != 0
+            let address = withUnsafeBytes(of: socket.addr) { Array($0.prefix(isIPv6 ? 16 : 4)) }
+            return RawListenSocket(port: Int(socket.port), isIPv6: isIPv6, localAddress: address)
+        }
     }
 
     /// `proc_pidpath`.
     public static func executablePath(pid: pid_t) throws(ProcInfoError) -> String {
-        // TODO(v0.1)
-        throw .noSuchProcess
+        try readPath { cpi_pidpath(pid, $0, $1) }
     }
 
     /// `PROC_PIDVNODEPATHINFO` → `pvi_cdir.vip_path`.
     public static func currentDirectory(pid: pid_t) throws(ProcInfoError) -> String {
-        // TODO(v0.1)
-        throw .noSuchProcess
+        try readPath { cpi_cwd(pid, $0, $1) }
+    }
+
+    private static func readPath(
+        _ read: (UnsafeMutablePointer<CChar>?, Int) -> Int32
+    ) throws(ProcInfoError) -> String {
+        var buffer = [CChar](repeating: 0, count: Int(CPI_PATH_MAX))
+        let length = buffer.withUnsafeMutableBufferPointer { read($0.baseAddress, $0.count) }
+        guard length > 0 else { throw ProcInfoError(errno: errno) }
+        let bytes = buffer.prefix(min(Int(length), buffer.count)).prefix { $0 != 0 }
+        return String(decoding: bytes.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
+    /// Reads a NUL-terminated string out of an imported fixed-size C array (a Swift tuple).
+    private static func cString<T>(fromTuple tuple: T) -> String {
+        withUnsafeBytes(of: tuple) { raw in
+            String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
     }
 
     /// `sysctl([CTL_KERN, KERN_PROCARGS2, pid])` → argv.

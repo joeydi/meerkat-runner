@@ -113,17 +113,18 @@ struct ServerRow: View {
     }
 }
 
-/// An unmatched listener. View-only: **no Stop, anywhere** (AGENTS.md §1, DESIGN.md §3).
+/// An unmatched listener, one row per (process, port). View-only: **no Stop, anywhere**
+/// (AGENTS.md §1, DESIGN.md §3 `OtherListenerRow`).
 struct OtherListenerRow: View {
-    let listener: Listener
+    let group: ListenerGroup
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 10) {
             StatusDot(kind: .other)
             HStack(spacing: 0) {
-                Text(listener.processName).foregroundStyle(.primary)
-                if let cwd = listener.cwd {
+                Text(group.processName).foregroundStyle(.primary)
+                if let cwd = group.cwd, cwd != "/" {
                     Text(" — \(Format.abbreviatingHome(cwd))")
                         .foregroundStyle(.secondary)
                         .truncationMode(.middle)
@@ -135,12 +136,15 @@ struct OtherListenerRow: View {
             if isHovering {
                 IconButton(symbol: "arrow.up.forward.square", label: "Open in Browser") { open() }
                 IconButton(symbol: "doc.on.doc", label: "Copy URL") { copyURL() }
-                if listener.cwd != nil {
+                if group.cwd != nil {
                     IconButton(symbol: "folder", label: "Reveal Folder") { revealFolder() }
                 }
                 // TODO(v0.2): "Add as server…" pre-fills the Add sheet with the cwd.
+            } else if group.isLANVisible {
+                Badge(text: "LAN visible", style: .warning)
+                    .help("Listening on all network interfaces. Other devices on your network can reach it.")
             }
-            Text(":\(String(listener.port))").font(Tokens.Font.port).foregroundStyle(.secondary)
+            Text(":\(String(group.port))").font(Tokens.Font.port).foregroundStyle(.secondary)
         }
         .padding(.vertical, 6)
         .padding(.leading, 10)
@@ -151,15 +155,26 @@ struct OtherListenerRow: View {
         .contextMenu {
             Button("Open in Browser") { open() }
             Button("Copy URL") { copyURL() }
-            if listener.cwd != nil {
+            if group.cwd != nil {
                 Button("Reveal in Finder") { revealFolder() }
             }
-            Button("Copy PID") { copy(String(listener.pid)) }
+            Button("Copy PID") { copy(String(group.pid)) }
         }
-        .help("PID \(listener.pid)")
+        .help("PID \(group.pid)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAction(named: "Open in Browser") { open() }
+        .accessibilityAction(named: "Copy URL") { copyURL() }
     }
 
-    private var url: URL? { Format.localURL(port: listener.port) }
+    private var accessibilityText: String {
+        var text = "\(group.processName), port \(group.port)"
+        if let cwd = group.cwd { text += ", in \(Format.abbreviatingHome(cwd))" }
+        if group.isLANVisible { text += ", visible on the local network" }
+        return text
+    }
+
+    private var url: URL? { Format.localURL(port: group.port) }
 
     private func open() {
         if let url { NSWorkspace.shared.open(url) }
@@ -170,7 +185,7 @@ struct OtherListenerRow: View {
     }
 
     private func revealFolder() {
-        guard let cwd = listener.cwd else { return }
+        guard let cwd = group.cwd else { return }
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: cwd)
     }
 
