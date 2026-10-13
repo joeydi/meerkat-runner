@@ -47,7 +47,7 @@ public actor ApprovalGate {
         current: ScriptFingerprint.Input,
         environment: [String: String]
     ) async throws(SupervisorError) -> StartOutcome {
-        guard current.projectPath == project.path, current.command == project.command,
+        guard current.projectPath == project.path, current.command == project.launchCommand,
               isApproved(project, current: current)
         else {
             return .needsReapproval(previous: project.approval, current: current)

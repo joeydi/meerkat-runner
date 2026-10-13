@@ -1,0 +1,13 @@
+{
+  "proposals": [
+    {
+      "label": "Static site",
+      "argv": ["python3", "-m", "http.server", "8000", "--bind", "127.0.0.1"],
+      "resolvedScript": null,
+      "source": "index.html",
+      "framework": "Static",
+      "predictedPort": 8000,
+      "notes": ["Python's built-in server"]
+    }
+  ]
+}

@@ -54,4 +54,19 @@ final class ScriptFingerprintTests: XCTestCase {
         let split = fingerprint { $0.command = .argv(["pnpm", "run", "dev"]) }
         XCTAssertNotEqual(joined, split)
     }
+
+    func testLocalhostBindIsPartOfWhatIsApproved() {
+        var project = Project(name: "web", path: "/Users/me/web", detector: .node, command: .argv(["pnpm", "run", "dev"]))
+        let off = ScriptFingerprint.Input(project: project, resolvedScript: "next dev")
+        // Projects saved before the bind existed keep their fingerprint.
+        XCTAssertEqual(off.command, .argv(["pnpm", "run", "dev"]))
+        XCTAssertEqual(off.envOverrideKeys, [])
+
+        project.preferLocalhostBind = true
+        project.localhostBind = BindOverride(arguments: ["-H", "127.0.0.1"], environment: ["HOST": "127.0.0.1"])
+        let on = ScriptFingerprint.Input(project: project, resolvedScript: "next dev")
+        XCTAssertEqual(on.command, .argv(["pnpm", "run", "dev", "-H", "127.0.0.1"]))
+        XCTAssertEqual(on.envOverrideKeys, ["HOST"])
+        XCTAssertNotEqual(ScriptFingerprint.compute(off), ScriptFingerprint.compute(on))
+    }
 }

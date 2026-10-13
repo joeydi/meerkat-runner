@@ -20,5 +20,6 @@ public enum Detectors {
         LaravelDetector(),
         MakeJustDetector(),
         ComposeDetector(),
+        StaticDetector(),
     ]
 }

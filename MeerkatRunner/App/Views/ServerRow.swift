@@ -65,7 +65,7 @@ struct ServerRow: View {
             if let port = row.project.port { parts.append("localhost:\(port)") }
             parts.append(Format.uptime(since: since))
         default:
-            parts.append(row.project.command.displayString)
+            parts.append(row.project.launchCommand.displayString)
             if let port = row.project.port { parts.append(":\(port)") }
         }
         return parts.joined(separator: " · ")

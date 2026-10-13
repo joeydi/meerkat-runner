@@ -6,8 +6,8 @@ import SwiftUI
 
 /// Add server from folder (AGENTS.md §9.2, DESIGN.md §4.2). Presented in its own 540 pt window.
 ///
-/// Read-only for now: picking a folder runs the detectors (which never execute anything) and shows
-/// the proposals. TODO(v0.2, next step): Add / Add and Start save through the approval gate.
+/// Picking a folder runs the detectors (which never execute anything) and shows the proposals.
+/// Add / Add and Start save through the registry, which approves exactly the command shown here.
 struct AddServerSheet: View {
     @Environment(AddServerModel.self) private var model
     @Environment(ServerRegistry.self) private var registry
@@ -21,11 +21,93 @@ struct AddServerSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             header
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("How should it start?").font(Tokens.Font.label)
-                commandCard
+            if model.workspaceServers.count >= 2, !model.isDetecting {
+                Toggle(isOn: $model.addsEachWorkspace) {
+                    Text("Add each app as its own server (\(model.workspaceServers.count) in this monorepo)")
+                }
+                .toggleStyle(.checkbox)
             }
 
+            if model.addsEachWorkspace {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Which apps?").font(Tokens.Font.label)
+                    workspaceCard
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("How should it start?").font(Tokens.Font.label)
+                    commandCard
+                }
+                singleServerFields
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                if !model.addsEachWorkspace {
+                    ForEach($model.envFiles) { $file in
+                        Toggle(isOn: $file.isOn) {
+                            Text("Load \(file.name) (\(variableText(file.variableCount)), values hidden)")
+                        }
+                    }
+                }
+                Toggle("Start when I log in", isOn: $model.startAtLogin)
+                Toggle(isOn: $model.bindToLocalhost) {
+                    Text("Bind to localhost only")
+                }
+                .disabled(!model.addsEachWorkspace && !model.canBindToLocalhost)
+                .help("Adds the framework's host flag (or HOST=127.0.0.1) so other devices on your network can't reach it.")
+                if !model.addsEachWorkspace, !model.canBindToLocalhost {
+                    Text("Docker publishes this project's ports; set the bind address in the compose file.")
+                        .font(Tokens.Font.meta)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 20)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            InfoCallout(text: callout)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(Tokens.Font.meta)
+                    .foregroundStyle(Tokens.Colors.errorText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { close() }
+                    .keyboardShortcut(.cancelAction)
+                Button(addTitle) { save(start: false) }
+                    .disabled(!model.canAdd || isSaving)
+                Button(addAndStartTitle) { save(start: true) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.canAdd || isSaving)
+            }
+            .controlSize(.large)
+        }
+        .padding(24)
+        .frame(width: 540)
+        .modifier(FolderDrop(isTargeted: $isDropTargeted) { model.load($0) })
+        .onAppear(perform: showPickerIfRequested)
+        .onChange(of: model.wantsFolderPicker) { showPickerIfRequested() }
+    }
+
+    private var addTitle: String {
+        model.addsEachWorkspace ? "Add \(selectedWorkspaceCount)" : "Add"
+    }
+
+    private var addAndStartTitle: String {
+        model.addsEachWorkspace ? "Add and Start \(selectedWorkspaceCount)" : "Add and Start"
+    }
+
+    private var selectedWorkspaceCount: Int { model.workspaceServers.filter(\.isOn).count }
+
+    // MARK: - Single server: name, port, health URL
+
+    private var singleServerFields: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 12) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
                 GridRow {
                     Text("Name").font(Tokens.Font.label)
@@ -48,62 +130,21 @@ struct AddServerSheet: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach($model.envFiles) { $file in
-                    Toggle(isOn: $file.isOn) {
-                        Text("Load \(file.name) (\(variableText(file.variableCount)), values hidden)")
-                    }
-                }
-                Toggle("Start when I log in", isOn: $model.startAtLogin)
-                // "Bind to localhost only" arrives with the framework flags in v0.3 (§6.6).
-            }
-            .toggleStyle(.checkbox)
-
-            InfoCallout(text: callout)
-
-            if let errorMessage {
-                Text(errorMessage)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Health check URL (optional)").font(Tokens.Font.label)
+                TextField(healthPlaceholder, text: $model.healthURLText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(Tokens.Font.code)
+                Text(model.healthURLError ?? "Runner shows it as running once this answers, not just when the port opens.")
                     .font(Tokens.Font.meta)
-                    .foregroundStyle(Tokens.Colors.errorText)
+                    .foregroundStyle(model.healthURLError == nil ? Color.secondary : Tokens.Colors.warningText)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
 
-            HStack {
-                Spacer()
-                Button("Cancel") { close() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Add") { save(start: false) }
-                    .disabled(!model.canAdd || isSaving)
-                Button("Add and Start") { save(start: true) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!model.canAdd || isSaving)
-            }
-            .controlSize(.large)
-        }
-        .padding(24)
-        .frame(width: 540)
-        // Drag a project folder from Finder onto this window. (The menu itself can't take drops:
-        // a MenuBarExtra window closes as soon as Finder becomes active.)
-        .dropDestination(for: URL.self) { urls, _ in
-            let folder = urls.first { url in
-                var isDirectory: ObjCBool = false
-                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
-            }
-            guard let folder else { return false }
-            model.load(folder)
-            return true
-        } isTargeted: { isDropTargeted = $0 }
-        .overlay {
-            if isDropTargeted {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                    .padding(6)
-                    .allowsHitTesting(false)
-            }
-        }
-        .onAppear(perform: showPickerIfRequested)
-        .onChange(of: model.wantsFolderPicker) { showPickerIfRequested() }
+    private var healthPlaceholder: String {
+        "http://localhost:\(model.effectivePort.map(String.init) ?? "3000")/"
     }
 
     // MARK: - Header
@@ -152,10 +193,14 @@ struct AddServerSheet: View {
                     Divider()
                 }
                 ForEach(Array(model.proposals.enumerated()), id: \.offset) { index, proposal in
+                    let isSelected = model.selection == index
                     CommandOption(
                         proposal: proposal,
+                        // The selected command is shown exactly as it will be approved and run.
+                        command: isSelected ? model.displayedCommand ?? proposal.command : proposal.command,
+                        environmentText: isSelected ? model.bindEnvironmentText : nil,
                         isSuggested: index == 0,
-                        isSelected: model.selection == index
+                        isSelected: isSelected
                     ) { model.selection = index }
                     Divider()
                 }
@@ -198,10 +243,59 @@ struct AddServerSheet: View {
                         .foregroundStyle(Tokens.Colors.warningText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let environment = model.bindEnvironmentText {
+                    Text("Runs with \(environment)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 14)
+    }
+
+    // MARK: - Workspaces ("Add each as its own server")
+
+    private var workspaceCard: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach($model.workspaceServers) { $server in
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(isOn: $server.isOn) {
+                        HStack(spacing: 8) {
+                            Text(server.name).font(.body.weight(.medium))
+                            Text(server.relativePath).font(Tokens.Font.meta).foregroundStyle(.secondary)
+                            if let framework = server.proposal.framework {
+                                Text("· \(framework)").font(Tokens.Font.meta).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    // Exactly what each server runs, in its own folder (§8.2: nothing runs unseen).
+                    Text(model.workspaceCommand(for: server))
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(.leading, 20)
+                    if let script = server.proposal.resolvedScript {
+                        Text("runs: \(script)")
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .background(Tokens.Colors.fillCode, in: RoundedRectangle(cornerRadius: 6))
+                            .padding(.leading, 20)
+                    }
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                if server.id != model.workspaceServers.last?.id { Divider() }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor)))
     }
 
     private func cardMessage(_ text: String) -> some View {
@@ -232,6 +326,11 @@ struct AddServerSheet: View {
     }
 
     private var callout: Text {
+        if model.addsEachWorkspace {
+            return Text(
+                "Each command runs as you, inside its app's folder. Nothing has run yet. If a script changes later, you'll be asked to approve it again."
+            )
+        }
         let path = model.folder.map { Format.abbreviatingHome($0.path) } ?? "the project folder"
         let code = Text(path).font(.system(size: 12, design: .monospaced))
         return Text(
@@ -268,17 +367,25 @@ struct AddServerSheet: View {
     }
 
     private func save(start: Bool) {
-        guard let made = model.makeProject() else { return }
+        let toAdd = model.addsEachWorkspace ? model.makeWorkspaceProjects() : model.makeProject().map { [$0] } ?? []
+        guard !toAdd.isEmpty else { return }
         isSaving = true
         errorMessage = nil
         Task {
             defer { isSaving = false }
+            var added: [Project] = []
             do {
-                try await registry.add(made.project, shownScript: made.shownScript)
+                for made in toAdd {
+                    try await registry.add(made.project, shownScript: made.shownScript)
+                    added.append(made.project)
+                }
                 close()
-                if start { await startAdded(made.project) }
+                if start {
+                    for project in added { await startAdded(project) }
+                }
             } catch ServerRegistry.ProjectError.changedWhileReviewing {
-                errorMessage = "The project's files changed while this window was open. Review the command again."
+                let saved = added.isEmpty ? "" : " \(added.count) of \(toAdd.count) were added."
+                errorMessage = "The project's files changed while this window was open. Review the command again.\(saved)"
                 if let folder = model.folder { model.load(folder) }
             } catch {
                 errorMessage = "Couldn't save the project."
@@ -300,9 +407,41 @@ struct AddServerSheet: View {
     }
 }
 
+/// Drag a project folder from Finder onto the Add window. (The menu itself can't take drops: a
+/// MenuBarExtra window closes as soon as Finder becomes active.)
+private struct FolderDrop: ViewModifier {
+    @Binding var isTargeted: Bool
+    let load: (URL) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .dropDestination(for: URL.self) { urls, _ in
+                let folder = urls.first { url in
+                    var isDirectory: ObjCBool = false
+                    return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+                }
+                guard let folder else { return false }
+                load(folder)
+                return true
+            } isTargeted: { isTargeted = $0 }
+            .overlay {
+                if isTargeted {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .padding(6)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
 /// One proposal in the command card (DESIGN.md §3 `CommandOption`).
 private struct CommandOption: View {
     let proposal: Proposal
+    /// What's shown: the proposal's command, plus localhost-bind arguments when selected.
+    let command: LaunchCommand
+    /// e.g. `HOST=127.0.0.1` when the bind uses env.
+    var environmentText: String?
     let isSuggested: Bool
     let isSelected: Bool
     let select: () -> Void
@@ -313,7 +452,7 @@ private struct CommandOption: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     RadioDot(isSelected: isSelected)
                     // The selected command is shown in full: nothing runs that the user hasn't seen (§8).
-                    Text(proposal.command.displayString)
+                    Text(command.displayString)
                         .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular, design: .monospaced))
                         .lineLimit(isSelected ? nil : 1)
                         .truncationMode(.middle)
@@ -321,7 +460,7 @@ private struct CommandOption: View {
                     if isSuggested {
                         Badge(text: "Suggested", style: .accent)
                     }
-                    if proposal.command.isShell {
+                    if command.isShell {
                         Badge(text: "Shell command", style: .warning)
                     }
                     Spacer(minLength: 8)
@@ -329,6 +468,12 @@ private struct CommandOption: View {
                         .font(Tokens.Font.meta)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+                if isSelected, let environmentText {
+                    Text("Runs with \(environmentText)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 22)
                 }
                 if isSelected, let script = proposal.resolvedScript, script != proposal.command.displayString {
                     Text("runs: \(script)")

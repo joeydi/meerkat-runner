@@ -254,7 +254,7 @@ struct Proposal: Sendable {
 | Detector | Reads | Proposes | Rules |
 | --- | --- | --- | --- |
 | Node | `package.json`, lockfiles | `<pm> run <script>` for `dev`, `start`, `serve`, `develop`, `preview` (that order) | Package manager by lockfile: `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, `bun.lockb`/`bun.lock` → bun, `package-lock.json` → npm; else `packageManager` field; else npm. Framework from deps (`next`, `vite`, `astro`, `@remix-run/*`, `nuxt`, `@sveltejs/kit`). `start` gets note "needs a build first" for Next/Nuxt. Include `pre<name>`/`post<name>` scripts in `resolvedScript` when present |
-| Monorepo | `pnpm-workspace.yaml`, `package.json#workspaces`, `turbo.json`, `nx.json` | Root `dev` plus one proposal per workspace with a `dev` script | Offer "Add each as its own server" in the sheet |
+| Monorepo | `pnpm-workspace.yaml`, `package.json#workspaces`, `turbo.json`, `nx.json` | Root `dev` plus one proposal per workspace with a `dev` script | Offer "Add each as its own server" in the sheet: each app becomes a project whose path is its own folder, running `<pm> run dev` there. A folder inside a monorepo takes its package manager from the root's lockfile (found by walking up at most 5 folders, stopping at the home folder or a `.git`) |
 | Procfile | `Procfile.dev`, `Procfile` | One proposal per line | Prefer `.dev` |
 | Rails | `Gemfile`, `bin/dev`, `bin/rails` | `bin/dev`, else `bin/rails server` | |
 | Django | `manage.py` | `<python> manage.py runserver` | `<python>` = `.venv/bin/python`, `venv/bin/python`, else `python3` |
@@ -262,7 +262,7 @@ struct Proposal: Sendable {
 | Laravel | `artisan`, `composer.json` | `php artisan serve` | |
 | Make / Just | `Makefile`, `justfile` | Targets named `dev`, `run`, `serve`, `start` | Parse target names only; `resolvedScript` = recipe lines |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yml` | `docker compose up` | Ports from `ports:`; mark "Docker" |
-| Static | `index.html` and nothing else | Built-in static server | **v0.3+**, optional |
+| Static | `index.html` and nothing else | `python3 -m http.server 8000 --bind 127.0.0.1` | Runner never listens itself (§8.1 rule 7), so the "built-in" server is a separate, approved process |
 
 ### Port prediction
 
@@ -303,7 +303,7 @@ The first of these wins:
 1. A new listener whose PID is in the server's session/process group or descends from the spawned PID.
 2. A URL in output matching `https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d{2,5})`.
 
-Mark the server **running** once a listener appears. If `healthURL` is set, also require one successful HTTP GET (2xx–4xx counts as up) with a 2 s timeout, retried for 60 s.
+Mark the server **running** once a listener appears. If `healthURL` is set, also require one successful HTTP GET (2xx–4xx counts as up) with a 2 s timeout, retried for 60 s. Health URLs must be loopback (`localhost`, `127.0.0.1`, `[::1]`) and redirects aren't followed, so this never becomes an outbound request (§8.1 rule 7). If it never answers, the server is shown as running after 60 s anyway so it can be stopped.
 
 ### 6.5 Stopping
 
@@ -323,6 +323,8 @@ Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PI
 ### 6.6 Localhost-only binding
 
 The app cannot force a bind address. When `preferLocalhostBind` is on, the detector's framework entry adds the right flag or env (Vite `--host 127.0.0.1`, Next `-H 127.0.0.1`, Astro `--host 127.0.0.1`, Django `127.0.0.1:<port>`, Rails `-b 127.0.0.1`, generic `HOST=127.0.0.1`). The resulting command is what gets approved and fingerprinted. If the server still binds a wildcard address, show the **LAN visible** globe icon.
+
+Implementation (`Detection/LocalhostBinding.swift`): the flags or env are decided when the project is added and saved as `Project.localhostBind`; `Project.launchCommand` is `command` plus those arguments, and it (with the env *names*) is what's approved, fingerprinted and spawned. `command` keeps the detector's own form so the script can still be re-resolved. Node flags are added only when the script is a single call to a known CLI (`next dev|start`, `vite`, `astro`, `nuxt`/`nuxi`), since package managers append arguments to the end of the script (npm after `--`); anything else gets `HOST=127.0.0.1`. `bin/dev` gets `BINDING=127.0.0.1` (its arguments go to foreman). Docker Compose can't be bound this way; the option is disabled.
 
 ### 6.7 Quit and relaunch
 
