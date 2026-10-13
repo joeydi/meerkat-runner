@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app || true
+
+      - name: Install tools
+        run: brew install xcodegen swiftlint swiftformat
+
+      # Non-blocking until the first `swiftformat MeerkatRunner` + SwiftLint baseline pass on a Mac.
+      - name: Lint
+        continue-on-error: true
+        run: |
+          swiftformat --lint MeerkatRunner
+          swiftlint lint --strict MeerkatRunner
+
+      - name: RunnerKit tests
+        working-directory: MeerkatRunner/Packages/RunnerKit
+        run: swift test
+
+      - name: Build app
+        working-directory: MeerkatRunner
+        run: |
+          xcodegen
+          xcodebuild build \
+            -project MeerkatRunner.xcodeproj \
+            -scheme MeerkatRunner \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO

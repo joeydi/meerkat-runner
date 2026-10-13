@@ -1,0 +1,16 @@
+included:
+  - MeerkatRunner/App
+  - MeerkatRunner/Packages/RunnerKit/Sources
+  - MeerkatRunner/Packages/RunnerKit/Tests
+excluded:
+  - MeerkatRunner/Packages/RunnerKit/.build
+  - MeerkatRunner/Packages/RunnerKit/Tests/Fixtures
+
+disabled_rules:
+  - todo              # TODO(vX.Y) markers track milestone work from AGENTS.md
+  - force_try         # only used for constant regexes
+  - identifier_name
+
+line_length:
+  warning: 140
+  error: 200

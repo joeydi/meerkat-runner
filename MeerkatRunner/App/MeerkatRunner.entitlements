@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Intentionally empty (AGENTS.md §12): Hardened Runtime, not sandboxed, no exceptions.
+	     Only add what Sparkle requires, and never disable-library-validation,
+	     allow-unsigned-executable-memory, or allow-dyld-environment-variables (§8.1). -->
+</dict>
+</plist>

@@ -169,7 +169,7 @@ The **registry** exposes a single `@Observable` model the UI renders:
 - Location: `~/Library/Application Support/MeerkatRunner/projects.json`, file mode `0600`, directory `0700`.
 - Logs: `~/Library/Logs/MeerkatRunner/<project-id>.log`, rotated at 5 MB, keep 3.
 - Runtime state (PGIDs Runner launched, for re-adoption after relaunch): `~/Library/Application Support/MeerkatRunner/runtime.json`.
-- **Integrity:** the store is a JSON envelope `{ version, projects, mac }` where `mac` is HMAC-SHA256 over the canonical encoding of `projects`, keyed by a random 32-byte key in the Keychain (`kSecClassGenericPassword`, service `us.simplecreature.meerkat-runner.store`, created on first launch). On load, a bad or missing MAC → load projects but mark **every** approval invalid (force re-approval) and show a one-time warning. This is tamper-*evidence*, not tamper-proofing; say so in code comments.
+- **Integrity:** the store is a JSON envelope `{ version, projects, mac }` where `mac` is HMAC-SHA256 over the canonical encoding of `projects`, keyed by a random 32-byte key in the Keychain (`kSecClassGenericPassword`, service `us.okayplus.meerkat-runner.store`, created on first launch). On load, a bad or missing MAC → load projects but mark **every** approval invalid (force re-approval) and show a one-time warning. This is tamper-*evidence*, not tamper-proofing; say so in code comments.
 - Writes are atomic (`Data.write(options: .atomic)`), then `chmod 0600`.
 
 ---
@@ -214,6 +214,8 @@ Compare canonical paths (`realpath`, resolve symlinks, case-insensitive comparis
 Map argv/executable to a framework label: `next dev` → Next.js, `vite` → Vite, `astro dev` → Astro, `rails s|server`, `puma` → Rails, `manage.py runserver` → Django, `uvicorn` / `gunicorn` / `flask run` → Python, `php artisan serve` → Laravel, `node` (fallback) → Node. Keep the table in one file with tests.
 
 **Known system listeners** owned by the user should be hidden from "Other listeners" by default (toggle in Settings): `ControlCenter` (AirPlay Receiver on 5000 and 7000), `rapportd`, `sharingd`, `identityservicesd`, and similar. Keep this as a data table.
+
+**App listeners** (desktop apps such as Dropbox, Adobe, Raycast, editor helpers) are hidden from "Other listeners" by default too (separate Settings toggle): any listener whose executable is inside a `.app` bundle, unless that bundle is nested in a `.framework` (python.org/Homebrew Python run from `Python.framework/…/Python.app`) or is on a keep-list of dev-server apps (Postgres.app, DBngin, Herd, Docker, OrbStack, Rancher Desktop). Keep the keep-list as a data table.
 
 ---
 
@@ -339,7 +341,7 @@ Exit with a non-zero code within 10 s of start, or any unexpected exit → state
 - `Info.plist`: `LSUIElement = YES`, `LSMinimumSystemVersion = 14.0`.
 - Launch at login: `SMAppService.mainApp.register()/unregister()` from Settings.
 - Global hotkey to open the menu (v0.3): user-configurable; default none.
-- Settings window: General (launch at login, on quit, hide system listeners, poll intervals), Environment (reload shell env, show captured PATH), About (version, "Made by Meerkat" link → `[MEERKAT WAITLIST URL]`).
+- Settings window: General (launch at login, on quit, hide system listeners, hide app listeners, poll intervals), Environment (reload shell env, show captured PATH), About (version, "Made by Meerkat" link → `[MEERKAT WAITLIST URL]`).
 - Deep link scheme `meerkatrunner://` (v0.3): `start?id=<uuid>` and `stop?id=<uuid>` only, only for already-approved projects, always posts a notification. No command text is ever accepted from a URL.
 
 ---
@@ -479,7 +481,7 @@ Docker Compose port → project mapping (read-only: query the Docker socket for 
 - Notarize: `xcrun notarytool submit <zip> --keychain-profile <profile> --wait`, then `xcrun stapler staple`.
 - Updates: Sparkle 2 with EdDSA-signed appcast over HTTPS. `SUPublicEDKey` in `Info.plist`. Private key never in the repo.
 - `Scripts/release.sh` does archive → export → notarize → staple → DMG/zip → `generate_appcast`.
-- Bundle ID: `us.simplecreature.meerkat-runner` (confirm, §13).
+- Bundle ID: `us.okayplus.meerkat-runner` (confirmed). Developer ID team still open (§13).
 - CI (GitHub Actions, macOS runner): `swift test`, `xcodebuild build`, SwiftLint/SwiftFormat check. Signing and notarization run locally only.
 
 ### Code conventions
@@ -488,7 +490,7 @@ Docker Compose port → project mapping (read-only: query the Docker socket for 
 - Unsafe libproc/posix calls live only in `CProcInfo`, `ProcInfo` and `Supervisor`; every `Unsafe*` buffer has an explicit size check.
 - No third-party dependencies except Sparkle. Ask before adding any.
 - Errors are typed enums per module; user-facing messages are written in the view layer.
-- Log with `os.Logger` (subsystem `us.simplecreature.meerkat-runner`). Paths are `.private` by default; commands and env are never logged.
+- Log with `os.Logger` (subsystem `us.okayplus.meerkat-runner`). Paths are `.private` by default; commands and env are never logged.
 
 ---
 
@@ -496,7 +498,7 @@ Docker Compose port → project mapping (read-only: query the Docker socket for 
 
 1. Pricing: free vs $4.99 one-time. Don't build licensing either way.
 2. Re-approval keyboard default: is "Return does nothing, Esc = Don't Run" right, or should Return = Don't Run?
-3. Bundle ID and Developer ID team.
+3. Developer ID team (bundle ID confirmed: `us.okayplus.meerkat-runner`).
 4. Meerkat waitlist URL for the footer and empty state.
 5. Whether to hash referenced local script files (e.g. `scripts/setup.js`) into the fingerprint in v0.2 or defer.
 
