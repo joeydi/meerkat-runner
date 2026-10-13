@@ -43,6 +43,10 @@ public final class ServerRegistry {
     @ObservationIgnored private var startupTask: Task<Void, Never>?
     @ObservationIgnored private var eventsTask: Task<Void, Never>?
     @ObservationIgnored private var lastListeners: [Listener] = []
+    /// Started projects with a health URL that has answered (or timed out); until then they stay
+    /// Starting even once listening (§6.4).
+    @ObservationIgnored private var healthChecked: Set<UUID> = []
+    @ObservationIgnored private var healthTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private let defaults: UserDefaults
     private let logger = RunnerLog.logger(category: "registry")
 
@@ -141,6 +145,8 @@ public final class ServerRegistry {
         switch event {
         case .exited(let projectID, let exitCode, let requested):
             managed[projectID] = nil
+            healthTasks.removeValue(forKey: projectID)?.cancel()
+            healthChecked.remove(projectID)
             update(projectID) { row in
                 if requested || exitCode == nil {
                     row.state = .stopped
@@ -285,6 +291,8 @@ public final class ServerRegistry {
             throw .needsApproval
         case .started:
             logger.info("started a project")
+            healthChecked.remove(projectID)
+            if let url = project.healthURL { checkHealth(projectID, url: url) }
             await refreshManaged()
             watchStartup()
         }
@@ -452,13 +460,16 @@ public final class ServerRegistry {
         return VersionManagers.wrapper(existingFiles: present) { ExecutableResolver.find($0, path: path) != nil }
     }
 
-    /// Captured login env + approved env files + overrides + `FORCE_COLOR=1` (§6.1). Never logged.
+    /// Captured login env + approved env files + localhost bind + overrides + `FORCE_COLOR=1` (§6.1).
+    /// Never logged.
     func environment(for project: Project) async -> [String: String] {
         var environment = await shellEnv.environment()
         let root = URL(fileURLWithPath: project.path, isDirectory: true)
         for name in project.envFiles where !name.hasPrefix("/") && !name.split(separator: "/").contains("..") {
             environment.merge(EnvFile.values(at: root.appendingPathComponent(name))) { _, new in new }
         }
+        // Localhost bind env (§6.6) is approved with the command; the user's own overrides still win.
+        environment.merge(project.bindEnvironment) { _, new in new }
         environment.merge(project.envOverrides) { _, new in new }
         environment["FORCE_COLOR"] = "1"
         return environment
@@ -522,6 +533,25 @@ public final class ServerRegistry {
         apply(lastListeners)
     }
 
+    /// Probes the health URL until it answers, then lets the row move to Running. After 60 s without
+    /// an answer the server is shown as running anyway, so it can be stopped and its logs read.
+    private func checkHealth(_ projectID: UUID, url: URL) {
+        healthTasks[projectID]?.cancel()
+        healthTasks[projectID] = Task { [weak self] in
+            let up = await HealthCheck.waitUntilUp(url)
+            guard let self, !Task.isCancelled else { return }
+            if !up { logger.info("health URL didn't answer within 60 s") }
+            healthTasks[projectID] = nil
+            healthChecked.insert(projectID)
+            apply(lastListeners)
+        }
+    }
+
+    /// Whether a just-started project is still waiting on its health URL.
+    private func awaitingHealth(_ row: ProjectRow) -> Bool {
+        row.state == .starting && row.project.healthURL != nil && !healthChecked.contains(row.id)
+    }
+
     /// After a start, scan every 0.5 s for up to 60 s until the server is listening (§6.4).
     private func watchStartup() {
         startupTask?.cancel()
@@ -574,7 +604,7 @@ public final class ServerRegistry {
             if let found = matched[id] {
                 let isManaged = info.map { info in found.contains { $0.pgid == info.pgid } } ?? false
                 let since = isManaged ? info!.startedAt : (found.map(\.startTime.date).min() ?? .now)
-                if current != .stopping {
+                if current != .stopping, !(isManaged && awaitingHealth(projects[index])) {
                     next = .running(managed: isManaged, listeners: found, since: since)
                 }
                 if isManaged, let port = found.map(\.port).min(), projects[index].project.learnedPort != port {

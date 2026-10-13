@@ -42,14 +42,17 @@ public enum ScriptFingerprint {
         }
 
         /// Builds an input from a saved project plus freshly re-resolved file contents.
+        ///
+        /// The command is `project.launchCommand` (including any localhost-bind arguments), and the
+        /// bind's env names join the override keys, so turning the bind on or off needs approval.
         public init(project: Project, resolvedScript: String?, sourceMaterial: Data? = nil, wrapper: [String] = []) {
             self.init(
                 projectPath: project.path,
-                command: project.command,
+                command: project.launchCommand,
                 resolvedScript: resolvedScript,
                 sourceMaterial: sourceMaterial,
                 envFileNames: project.envFiles,
-                envOverrideKeys: project.envOverrides.keys.sorted(),
+                envOverrideKeys: Set(project.envOverrides.keys).union(project.bindEnvironment.keys).sorted(),
                 wrapper: wrapper
             )
         }

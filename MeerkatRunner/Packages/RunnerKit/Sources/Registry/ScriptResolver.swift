@@ -18,7 +18,8 @@ public enum ScriptResolver {
         case .laravel: LaravelDetector()
         case .make, .just: MakeJustDetector()
         case .compose: ComposeDetector()
-        case .static, .custom: nil
+        case .static: StaticDetector()
+        case .custom: nil
         }
     }
 

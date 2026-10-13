@@ -23,6 +23,9 @@ public struct Project: Identifiable, Codable, Sendable, Equatable {
     public var autoStartAtLogin: Bool
     /// Ask the framework to bind 127.0.0.1 (§6.6).
     public var preferLocalhostBind: Bool
+    /// The flags or env that `preferLocalhostBind` adds, decided when the project was added. Part of
+    /// the approved, fingerprinted command; nil when off (and for projects saved before v0.3).
+    public var localhostBind: BindOverride?
     /// `nil` = never approved; the project cannot start.
     public var approval: Approval?
     /// Reserved for the Meerkat integration (later).
@@ -42,6 +45,7 @@ public struct Project: Identifiable, Codable, Sendable, Equatable {
         healthURL: URL? = nil,
         autoStartAtLogin: Bool = false,
         preferLocalhostBind: Bool = false,
+        localhostBind: BindOverride? = nil,
         approval: Approval? = nil,
         liveURL: URL? = nil
     ) {
@@ -58,12 +62,41 @@ public struct Project: Identifiable, Codable, Sendable, Equatable {
         self.healthURL = healthURL
         self.autoStartAtLogin = autoStartAtLogin
         self.preferLocalhostBind = preferLocalhostBind
+        self.localhostBind = localhostBind
         self.approval = approval
         self.liveURL = liveURL
     }
 
     /// The port to show/open: learned beats expected.
     public var port: Int? { learnedPort ?? expectedPort }
+
+    /// What actually runs: `command` plus any localhost-bind arguments. This, not `command`, is what
+    /// gets approved, fingerprinted and spawned. `command` stays the detector's own form so the
+    /// script can be re-resolved from the files.
+    public var launchCommand: LaunchCommand {
+        guard preferLocalhostBind, let bind = localhostBind else { return command }
+        return command.appending(bind.arguments)
+    }
+
+    /// Env names and values added by the localhost bind (e.g. `HOST=127.0.0.1`).
+    public var bindEnvironment: [String: String] {
+        guard preferLocalhostBind, let bind = localhostBind else { return [:] }
+        return bind.environment
+    }
+}
+
+/// What "Bind to localhost only" adds for a framework (AGENTS.md §6.6): arguments appended to the
+/// command (e.g. `--host 127.0.0.1`) and/or environment (e.g. `HOST=127.0.0.1`).
+public struct BindOverride: Codable, Sendable, Hashable {
+    public var arguments: [String]
+    public var environment: [String: String]
+
+    public init(arguments: [String] = [], environment: [String: String] = [:]) {
+        self.arguments = arguments
+        self.environment = environment
+    }
+
+    public var isEmpty: Bool { arguments.isEmpty && environment.isEmpty }
 }
 
 /// How a project starts. `.argv` is the default; `.shell` is opt-in and labelled in the UI.
@@ -80,6 +113,18 @@ public enum LaunchCommand: Codable, Sendable, Hashable {
             return args.map(Self.quoteForDisplay).joined(separator: " ")
         case .shell(let string):
             return string
+        }
+    }
+
+    /// The command with `arguments` appended. Shell commands get each argument single-quoted.
+    public func appending(_ arguments: [String]) -> LaunchCommand {
+        guard !arguments.isEmpty else { return self }
+        switch self {
+        case .argv(let args):
+            return .argv(args + arguments)
+        case .shell(let string):
+            let quoted = arguments.map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+            return .shell(([string] + quoted).joined(separator: " "))
         }
     }
 

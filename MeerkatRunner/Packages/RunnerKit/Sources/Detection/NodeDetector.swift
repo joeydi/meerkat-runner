@@ -67,21 +67,37 @@ public struct NodeDetector: Detector {
         }
     }
 
-    /// Lockfile first, then the `packageManager` field, else npm.
+    static let lockfiles = [
+        ("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"), ("bun.lock", "bun"),
+        ("package-lock.json", "npm"),
+    ]
+
+    /// Lockfile first, then the `packageManager` field; for a package inside a monorepo, then the
+    /// root's lockfile and field; else npm.
     public static func packageManager(files: FileSnapshot, packageJSON: [String: Any]?) -> PackageManager {
-        let lockfiles = [
-            ("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"), ("bun.lock", "bun"),
-            ("package-lock.json", "npm"),
-        ]
         for (lockfile, name) in lockfiles where files.exists(lockfile) {
             return PackageManager(name: name, lockfile: lockfile)
         }
-        if let field = packageJSON?["packageManager"] as? String,
-           let name = field.split(separator: "@").first.map(String.init),
-           ["pnpm", "yarn", "bun", "npm"].contains(name) {
+        if let name = managerName(packageJSON?["packageManager"] as? String) {
             return PackageManager(name: name, lockfile: nil)
         }
+        if let root = files.workspaceRoot {
+            for (lockfile, name) in lockfiles where root.lockfiles.contains(lockfile) {
+                return PackageManager(name: name, lockfile: "\(root.relativePath)/\(lockfile)")
+            }
+            if let name = managerName(root.packageManager) {
+                return PackageManager(name: name, lockfile: nil)
+            }
+        }
         return PackageManager(name: "npm", lockfile: nil)
+    }
+
+    /// `pnpm@9.1.0` → `pnpm`.
+    static func managerName(_ field: String?) -> String? {
+        guard let name = field?.split(separator: "@").first.map(String.init),
+              ["pnpm", "yarn", "bun", "npm"].contains(name)
+        else { return nil }
+        return name
     }
 
     public static func framework(in package: [String: Any]) -> Framework? {

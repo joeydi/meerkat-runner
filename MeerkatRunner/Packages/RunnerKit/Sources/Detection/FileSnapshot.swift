@@ -42,12 +42,37 @@ public struct FileSnapshot: Sendable {
     public var existing: Set<String>
     /// Workspace directories (relative) that contain a `package.json`, sorted.
     public var workspaces: [String]
+    /// The monorepo this folder belongs to, when the folder is one of its packages.
+    public var workspaceRoot: WorkspaceRoot?
 
-    public init(topLevel: Set<String>, entries: [String: Entry], existing: Set<String> = [], workspaces: [String] = []) {
+    /// An enclosing monorepo root: where the lockfile and `packageManager` live for a workspace package.
+    public struct WorkspaceRoot: Sendable, Equatable {
+        /// From the folder to the root, e.g. `../..`.
+        public var relativePath: String
+        /// Lockfiles that exist at the root (names from `NodeDetector`'s lockfile table).
+        public var lockfiles: Set<String>
+        /// The root `package.json` `packageManager` field, e.g. `pnpm@9.1.0`.
+        public var packageManager: String?
+
+        public init(relativePath: String, lockfiles: Set<String>, packageManager: String? = nil) {
+            self.relativePath = relativePath
+            self.lockfiles = lockfiles
+            self.packageManager = packageManager
+        }
+    }
+
+    public init(
+        topLevel: Set<String>,
+        entries: [String: Entry],
+        existing: Set<String> = [],
+        workspaces: [String] = [],
+        workspaceRoot: WorkspaceRoot? = nil
+    ) {
         self.topLevel = topLevel
         self.entries = entries
         self.existing = existing
         self.workspaces = workspaces
+        self.workspaceRoot = workspaceRoot
     }
 
     public func exists(_ path: String) -> Bool {
@@ -104,12 +129,52 @@ public struct FileSnapshot: Sendable {
             load("\(dir)/package.json")
         }
 
+        // A package inside a monorepo: find the root for its package manager.
+        let isRoot = !patterns.isEmpty
+        let root = entries["package.json"] != nil && !isRoot ? findWorkspaceRoot(above: folder) : nil
+
         return FileSnapshot(
             topLevel: Set(top),
             entries: entries,
             existing: existing,
-            workspaces: workspaceDirs.filter { entries["\($0)/package.json"] != nil }
+            workspaces: workspaceDirs.filter { entries["\($0)/package.json"] != nil },
+            workspaceRoot: root
         )
+    }
+
+    static let rootLockfiles = ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock", "package-lock.json"]
+    static let maxRootDepth = 5
+
+    /// Walks up at most `maxRootDepth` folders for a monorepo root (`pnpm-workspace.yaml`, or a
+    /// `package.json` with `workspaces`). Stops at the home folder, the filesystem root, or a folder
+    /// with `.git` (the repository root, checked last). Reads only those two files; probes lockfiles.
+    static func findWorkspaceRoot(above folder: URL) -> WorkspaceRoot? {
+        let fm = FileManager.default
+        let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL.path
+        var current = folder.standardizedFileURL
+        // A repository root is its own project, not a package of something above it.
+        if fm.fileExists(atPath: current.appendingPathComponent(".git").path) { return nil }
+        for depth in 1...maxRootDepth {
+            let parent = current.deletingLastPathComponent()
+            guard parent.path != current.path, parent.path != "/", parent.path != home else { return nil }
+            current = parent
+
+            var packageJSON: [String: Any]?
+            if case .contents(let data)? = readEntry(current.appendingPathComponent("package.json")) {
+                packageJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            }
+            let declaresWorkspaces = packageJSON?["workspaces"] != nil
+                || fm.fileExists(atPath: current.appendingPathComponent("pnpm-workspace.yaml").path)
+            if declaresWorkspaces {
+                return WorkspaceRoot(
+                    relativePath: Array(repeating: "..", count: depth).joined(separator: "/"),
+                    lockfiles: Set(rootLockfiles.filter { fm.fileExists(atPath: current.appendingPathComponent($0).path) }),
+                    packageManager: packageJSON?["packageManager"] as? String
+                )
+            }
+            if fm.fileExists(atPath: current.appendingPathComponent(".git").path) { return nil }
+        }
+        return nil
     }
 
     /// nil when the path doesn't exist.

@@ -2,6 +2,7 @@ import Detection
 import Foundation
 import Models
 import Observation
+import Registry
 
 /// State for the Add server window (AGENTS.md §5 flow, §9.2). Shared so the menu's "+", folder drops
 /// and "Add as server…" on an Other listeners row can all pre-fill it.
@@ -36,6 +37,26 @@ final class AddServerModel {
     var portText = ""
     var envFiles: [EnvFileOption] = []
     var startAtLogin = false
+    /// "Bind to localhost only" (AGENTS.md §6.6).
+    var bindToLocalhost = false
+    /// Optional health URL (§6.4); loopback only.
+    var healthURLText = ""
+    /// One package of a monorepo, offered by "Add each as its own server".
+    struct WorkspaceServer: Identifiable, Equatable {
+        /// e.g. `apps/web`
+        var relativePath: String
+        var folder: URL
+        var proposal: Proposal
+        var isOn = true
+
+        var id: String { relativePath }
+        var name: String { folder.lastPathComponent }
+    }
+
+    /// Workspace packages with a `dev` script, each detected in its own folder.
+    var workspaceServers: [WorkspaceServer] = []
+    /// The Add window lists the workspace packages instead of one command.
+    var addsEachWorkspace = false
     /// Set by "Add Server from Folder…" so the window shows the folder picker even if already open.
     var wantsFolderPicker = false
 
@@ -62,6 +83,10 @@ final class AddServerModel {
         portText = ""
         envFiles = []
         startAtLogin = false
+        bindToLocalhost = false
+        healthURLText = ""
+        workspaceServers = []
+        addsEachWorkspace = false
     }
 
     /// A server already running in the folder, offered as a proposal ("Add as server…").
@@ -94,6 +119,9 @@ final class AddServerModel {
                 proposals.append(proposal)
             }
             packageManager = result.packageManager
+            workspaceServers = result.workspaces.map {
+                WorkspaceServer(relativePath: $0.relativePath, folder: $0.folder, proposal: $0.proposal)
+            }
             envFiles = result.envFiles.enumerated().map { index, file in
                 // Pre-select the most specific env file only.
                 EnvFileOption(name: file.name, variableCount: file.variableCount, port: file.port, isOn: index == 0)
@@ -110,9 +138,16 @@ final class AddServerModel {
             var port: Int?
         }
 
+        struct Workspace: Sendable {
+            var relativePath: String
+            var folder: URL
+            var proposal: Proposal
+        }
+
         var proposals: [Proposal]
         var packageManager: NodeDetector.PackageManager?
         var envFiles: [EnvFileInfo]
+        var workspaces: [Workspace]
     }
 
     /// Runs off the main actor: file reads only.
@@ -131,14 +166,32 @@ final class AddServerModel {
                 port: text.flatMap(PortPrediction.envPort(in:))
             )
         }
-        return DetectionResult(proposals: proposals, packageManager: manager, envFiles: envFiles)
+        return DetectionResult(
+            proposals: proposals, packageManager: manager, envFiles: envFiles,
+            workspaces: await workspaces(in: folder, snapshot: snapshot)
+        )
+    }
+
+    /// Each workspace package's own `dev` command, detected in its folder (it runs there, using the
+    /// root's package manager), for "Add each as its own server".
+    nonisolated static func workspaces(in folder: URL, snapshot: FileSnapshot) async -> [DetectionResult.Workspace] {
+        var result: [DetectionResult.Workspace] = []
+        for relative in snapshot.workspaces {
+            let workspace = folder.appendingPathComponent(relative, isDirectory: true)
+            let proposals = await DetectionEngine.detect(in: workspace, detectors: [NodeDetector()])
+            if let dev = proposals.first(where: { $0.command.displayString.hasSuffix(" run dev") }) {
+                result.append(.init(relativePath: relative, folder: workspace, proposal: dev))
+            }
+        }
+        return result
     }
 
     // MARK: - Saving
 
     var canAdd: Bool {
-        folder != nil && !isDetecting && launchCommand != nil
-            && !name.trimmingCharacters(in: .whitespaces).isEmpty
+        guard folder != nil, !isDetecting, healthURLError == nil else { return false }
+        if addsEachWorkspace { return workspaceServers.contains(where: \.isOn) }
+        return launchCommand != nil && !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     /// The project to save, without an approval: the registry approves exactly `shownScript`.
@@ -152,9 +205,69 @@ final class AddServerModel {
             command: command,
             envFiles: envFiles.filter(\.isOn).map(\.name),
             expectedPort: effectivePort,
-            autoStartAtLogin: startAtLogin
+            healthURL: healthURL,
+            autoStartAtLogin: startAtLogin,
+            preferLocalhostBind: bindToLocalhost && bindOverride != nil,
+            localhostBind: bindToLocalhost ? bindOverride : nil
         )
         return (project, selectedProposal?.resolvedScript)
+    }
+
+    /// "Add each as its own server": one project per checked workspace package, run in its own folder.
+    /// The health URL is per server, so it isn't applied here.
+    func makeWorkspaceProjects() -> [(project: Project, shownScript: String?)] {
+        workspaceServers.filter(\.isOn).map { server in
+            let bind = bindToLocalhost ? LocalhostBinding.override(for: server.proposal, port: server.proposal.predictedPort) : nil
+            let project = Project(
+                name: server.name,
+                path: server.folder.path,
+                bookmark: try? server.folder.bookmarkData(),
+                detector: server.proposal.detector,
+                command: server.proposal.command,
+                expectedPort: server.proposal.predictedPort,
+                autoStartAtLogin: startAtLogin,
+                preferLocalhostBind: bind != nil,
+                localhostBind: bind
+            )
+            return (project, server.proposal.resolvedScript)
+        }
+    }
+
+    /// The command a workspace package runs, including localhost-bind arguments.
+    func workspaceCommand(for server: WorkspaceServer) -> String {
+        guard bindToLocalhost, let bind = LocalhostBinding.override(for: server.proposal, port: server.proposal.predictedPort) else {
+            return server.proposal.command.displayString
+        }
+        return server.proposal.command.appending(bind.arguments).displayString
+    }
+
+    // MARK: - Localhost bind and health URL
+
+    /// What "Bind to localhost only" adds for the selected command; nil when it can't (Docker Compose).
+    var bindOverride: BindOverride? {
+        LocalhostBinding.override(for: selectedProposal, port: effectivePort)
+    }
+
+    var canBindToLocalhost: Bool { bindOverride != nil }
+
+    /// The exact command that would be approved: the selected one plus any bind arguments.
+    var displayedCommand: LaunchCommand? {
+        guard let command = launchCommand else { return nil }
+        guard bindToLocalhost, let bind = bindOverride else { return command }
+        return command.appending(bind.arguments)
+    }
+
+    /// e.g. `HOST=127.0.0.1`, shown under the command when the bind uses env.
+    var bindEnvironmentText: String? {
+        guard bindToLocalhost, let bind = bindOverride, !bind.environment.isEmpty else { return nil }
+        return bind.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+    }
+
+    var healthURL: URL? { HealthCheck.parse(healthURLText) }
+
+    var healthURLError: String? {
+        guard !healthURLText.trimmingCharacters(in: .whitespaces).isEmpty, healthURL == nil else { return nil }
+        return "Use an http:// URL on localhost, 127.0.0.1 or [::1]."
     }
 
     // MARK: - Derived
