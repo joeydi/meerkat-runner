@@ -1,0 +1,17 @@
+{
+  "proposals": [
+    {
+      "label": "php artisan serve",
+      "argv": [
+        "php",
+        "artisan",
+        "serve"
+      ],
+      "resolvedScript": null,
+      "source": "artisan",
+      "framework": "Laravel",
+      "predictedPort": 8000,
+      "notes": []
+    }
+  ]
+}

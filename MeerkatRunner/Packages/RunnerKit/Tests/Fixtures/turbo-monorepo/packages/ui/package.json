@@ -1,0 +1,7 @@
+{
+  "name": "ui",
+  "private": true,
+  "scripts": {
+    "build": "tsc"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "proposals": [
+    {
+      "label": "bin/dev",
+      "argv": [
+        "bin/dev"
+      ],
+      "resolvedScript": "#!/usr/bin/env sh\nexec ./bin/rails server \"$@\"",
+      "source": "bin/dev",
+      "framework": "Rails",
+      "predictedPort": 3000,
+      "notes": []
+    },
+    {
+      "label": "bin/rails server",
+      "argv": [
+        "bin/rails",
+        "server"
+      ],
+      "resolvedScript": null,
+      "source": "bin/rails",
+      "framework": "Rails",
+      "predictedPort": 3000,
+      "notes": []
+    }
+  ]
+}

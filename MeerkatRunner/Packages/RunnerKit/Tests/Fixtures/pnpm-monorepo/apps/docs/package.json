@@ -1,0 +1,10 @@
+{
+  "name": "@acme/docs",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev"
+  },
+  "dependencies": {
+    "astro": "^4.16.0"
+  }
+}

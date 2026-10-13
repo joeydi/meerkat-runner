@@ -1,0 +1,43 @@
+{
+  "proposals": [
+    {
+      "label": "yarn dev",
+      "argv": [
+        "yarn",
+        "run",
+        "dev"
+      ],
+      "resolvedScript": "astro dev --port 4400",
+      "source": "package.json",
+      "framework": "Astro 4",
+      "predictedPort": 4400,
+      "notes": []
+    },
+    {
+      "label": "yarn start",
+      "argv": [
+        "yarn",
+        "run",
+        "start"
+      ],
+      "resolvedScript": "astro dev",
+      "source": "package.json",
+      "framework": "Astro 4",
+      "predictedPort": 4321,
+      "notes": []
+    },
+    {
+      "label": "yarn preview",
+      "argv": [
+        "yarn",
+        "run",
+        "preview"
+      ],
+      "resolvedScript": "astro preview",
+      "source": "package.json",
+      "framework": "Astro 4",
+      "predictedPort": 4321,
+      "notes": []
+    }
+  ]
+}

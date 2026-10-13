@@ -1,5 +1,6 @@
 import AppKit
 import Registry
+import Supervisor
 import ServiceManagement
 import SwiftUI
 
@@ -22,6 +23,8 @@ struct SettingsView: View {
 enum QuitBehaviour: String, CaseIterable, Identifiable {
     case stopManaged, leaveRunning, ask
 
+    static let defaultsKey = "quitBehaviour"
+
     var id: String { rawValue }
 
     var title: String {
@@ -35,7 +38,7 @@ enum QuitBehaviour: String, CaseIterable, Identifiable {
 
 private struct GeneralSettings: View {
     @Environment(ServerRegistry.self) private var registry
-    @AppStorage("quitBehaviour") private var quitBehaviour: QuitBehaviour = .stopManaged
+    @AppStorage(QuitBehaviour.defaultsKey) private var quitBehaviour: QuitBehaviour = .stopManaged
     @AppStorage("showPortCount") private var showPortCount = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String?
@@ -75,17 +78,39 @@ private struct GeneralSettings: View {
 }
 
 private struct EnvironmentSettings: View {
+    @Environment(ServerRegistry.self) private var registry
+    @State private var capture: ShellEnv.Capture?
+    @State private var isLoading = false
+
     var body: some View {
         Form {
             LabeledContent("Captured PATH") {
-                // TODO(v0.2): show ShellEnv's captured PATH and last-loaded time.
-                Text("Not captured yet")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(capture?.environment["PATH"].map { $0.replacingOccurrences(of: ":", with: "\n") } ?? "Not captured yet")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(capture == nil ? Color.secondary : Color.primary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let capture {
+                        Text(capture.isComplete
+                             ? "From your login shell, \(capture.capturedAt.formatted(date: .omitted, time: .shortened))"
+                             : "Your shell didn't answer within 5 seconds, so a minimal PATH is in use.")
+                            .font(Tokens.Font.meta)
+                            .foregroundStyle(capture.isComplete ? Color.secondary : Tokens.Colors.warningText)
+                    }
+                }
             }
-            Button("Reload Shell Environment") {}
-                .disabled(true)
+            Button(isLoading ? "Reloading…" : "Reload Shell Environment") {
+                isLoading = true
+                Task {
+                    capture = await registry.reloadShellEnvironment()
+                    isLoading = false
+                }
+            }
+            .disabled(isLoading)
+        }
+        .task {
+            if capture == nil { capture = await registry.shellEnvironment() }
         }
     }
 }

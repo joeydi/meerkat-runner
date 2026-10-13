@@ -21,13 +21,15 @@ let package = Package(
         // Unsafe libproc / sysctl access lives only in CProcInfo, ProcInfo and Supervisor.
         .target(name: "CProcInfo"),
         .target(name: "ProcInfo", dependencies: ["CProcInfo"]),
+        // Raw posix_spawn / openpty. Only Supervisor may depend on this (AGENTS.md §8.1 rule 2).
+        .target(name: "CSpawn"),
 
         // Value types shared by every module (AGENTS.md §3).
         .target(name: "Models"),
 
         .target(name: "Scanner", dependencies: ["Models", "ProcInfo"]),
         .target(name: "Detection", dependencies: ["Models"]),
-        .target(name: "Supervisor", dependencies: ["Models", "ProcInfo"]),
+        .target(name: "Supervisor", dependencies: ["Models", "ProcInfo", "CSpawn"]),
         .target(name: "Approval", dependencies: ["Models", "Supervisor"]),
         .target(name: "Store", dependencies: ["Models"]),
         .target(
@@ -39,9 +41,9 @@ let package = Package(
         .testTarget(name: "DetectionTests", dependencies: ["Detection", "Models"]),
         .testTarget(name: "ApprovalTests", dependencies: ["Approval", "Models"]),
         .testTarget(name: "StoreTests", dependencies: ["Store", "Models"]),
-        .testTarget(name: "SupervisorTests", dependencies: ["Supervisor", "Models"]),
+        .testTarget(name: "SupervisorTests", dependencies: ["Supervisor", "Models", "ProcInfo"]),
         .testTarget(name: "ScannerTests", dependencies: ["Scanner", "Models", "ProcInfo"]),
-        .testTarget(name: "RegistryTests", dependencies: ["Registry", "Models"]),
+        .testTarget(name: "RegistryTests", dependencies: ["Registry", "Models", "Store", "Approval"]),
     ],
     swiftLanguageModes: [.v6]
 )

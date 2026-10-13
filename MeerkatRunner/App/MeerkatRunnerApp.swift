@@ -1,6 +1,10 @@
 import AppKit
+import Models
 import Registry
+import Store
+import Supervisor
 import SwiftUI
+import UserNotifications
 
 @main
 struct MeerkatRunnerApp: App {
@@ -10,6 +14,7 @@ struct MeerkatRunnerApp: App {
         MenuBarExtra {
             MenuView()
                 .environment(appDelegate.registry)
+                .environment(appDelegate.addServer)
         } label: {
             MenuBarLabel(registry: appDelegate.registry)
         }
@@ -25,6 +30,7 @@ struct MeerkatRunnerApp: App {
         Window("Add Server", id: WindowID.addServer) {
             AddServerSheet()
                 .environment(appDelegate.registry)
+                .environment(appDelegate.addServer)
         }
         .windowResizability(.contentSize)
 
@@ -55,31 +61,147 @@ enum MeerkatLinks {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let registry = ServerRegistry()
+    let registry: ServerRegistry = {
+        let paths = StorePaths.standard
+        return ServerRegistry(
+            store: ProjectStore(paths: paths),
+            supervisor: ProcessSupervisor(logsDirectory: paths.logsDirectory, runtimeFile: paths.runtimeFile)
+        )
+    }()
+    let addServer = AddServerModel()
+
+    let crashNotifier = CrashNotifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        crashNotifier.install()
+        registry.onCrash = { [crashNotifier] project, exitCode in
+            crashNotifier.post(project: project, exitCode: exitCode)
+        }
         Task { await registry.start() }
     }
 
-    // TODO(v0.2): "On quit" setting (§6.7) — stop managed servers (default) / leave running / ask.
+    /// Settings › On quit (§6.7): stop managed servers (default), leave them running, or ask.
+    /// Servers left running are re-adopted on the next launch.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard registry.hasManagedServers else { return .terminateNow }
+        let raw = UserDefaults.standard.string(forKey: QuitBehaviour.defaultsKey) ?? ""
+        switch QuitBehaviour(rawValue: raw) ?? .stopManaged {
+        case .leaveRunning:
+            return .terminateNow
+        case .ask:
+            let alert = NSAlert()
+            alert.messageText = "Stop the servers Runner started?"
+            alert.informativeText = "Servers you leave running keep going; Runner picks them up again next time it opens."
+            alert.addButton(withTitle: "Stop and Quit")
+            alert.addButton(withTitle: "Leave Running")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate()
+            switch alert.runModal() {
+            case .alertFirstButtonReturn: break
+            case .alertSecondButtonReturn: return .terminateNow
+            default: return .terminateCancel
+            }
+        case .stopManaged:
+            break
+        }
+        Task {
+            await registry.stopAllManaged()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+}
+
+/// Lets code outside a view (notification clicks) open SwiftUI windows. Set by the always-present
+/// menu bar label.
+@MainActor
+enum WindowOpener {
+    static var openWindow: OpenWindowAction?
+
+    static func showLogs(for projectID: UUID) {
+        NSApp.activate()
+        openWindow?(id: WindowID.logs, value: projectID)
+    }
+}
+
+/// Crash notifications (§6.8): "<name> stopped unexpectedly — Exited with code 1", action View Logs.
+@MainActor
+final class CrashNotifier: NSObject, UNUserNotificationCenterDelegate {
+    nonisolated static let category = "crash"
+    nonisolated static let viewLogsAction = "view-logs"
+
+    private var authorizationRequested = false
+
+    func install() {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let viewLogs = UNNotificationAction(identifier: Self.viewLogsAction, title: "View Logs", options: [.foreground])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: Self.category, actions: [viewLogs], intentIdentifiers: []),
+        ])
+    }
+
+    func post(project: Project, exitCode: Int32) {
+        // Ask once, on the first crash, rather than at launch.
+        let ask = !authorizationRequested
+        authorizationRequested = true
+        let title = "\(project.name) stopped unexpectedly"
+        let body = "Exited with code \(exitCode)"
+        let projectID = project.id.uuidString
+        Task.detached { await Self.deliver(title: title, body: body, projectID: projectID, askFirst: ask) }
+    }
+
+    private nonisolated static func deliver(title: String, body: String, projectID: String, askFirst: Bool) async {
+        let center = UNUserNotificationCenter.current()
+        if askFirst { _ = try? await center.requestAuthorization(options: [.alert, .sound]) }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.categoryIdentifier = category
+        content.userInfo = ["projectID": projectID]
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard let raw = response.notification.request.content.userInfo["projectID"] as? String,
+              let projectID = UUID(uuidString: raw)
+        else { return }
+        await MainActor.run { WindowOpener.showLogs(for: projectID) }
+    }
+
+    /// Show crash notifications even while Runner is frontmost.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
 }
 
 /// Menu bar icon with the running-count badge (hidden at 0).
 struct MenuBarLabel: View {
     let registry: ServerRegistry
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         // TODO: replace `server.rack` with the template meerkat glyph once artwork exists (DESIGN.md §2.4).
         let count = registry.runningCount
-        if count > 0 {
-            HStack(spacing: 2) {
+        Group {
+            if count > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "server.rack")
+                    Text("\(count)")
+                }
+                .accessibilityLabel("Meerkat Runner, \(count) running")
+            } else {
                 Image(systemName: "server.rack")
-                Text("\(count)")
+                    .accessibilityLabel("Meerkat Runner")
             }
-            .accessibilityLabel("Meerkat Runner, \(count) running")
-        } else {
-            Image(systemName: "server.rack")
-                .accessibilityLabel("Meerkat Runner")
         }
+        .onAppear { WindowOpener.openWindow = openWindow }
     }
 }

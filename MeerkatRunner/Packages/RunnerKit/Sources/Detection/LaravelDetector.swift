@@ -10,7 +10,18 @@ public struct LaravelDetector: Detector {
     public init() {}
 
     public func detect(in folder: URL, files: FileSnapshot) -> [Proposal] {
-        // TODO(v0.2): implement per AGENTS.md §5 detector table; add fixtures + expected.json in Tests/Fixtures.
-        []
+        guard files.exists("artisan"),
+              let require = files.json("composer.json")?["require"] as? [String: Any],
+              require["laravel/framework"] != nil
+        else { return [] }
+        return [Proposal(
+            detector: .laravel,
+            label: "php artisan serve",
+            command: .argv(["php", "artisan", "serve"]),
+            source: "artisan",
+            framework: "Laravel",
+            predictedPort: 8000,
+            confidence: 90
+        )]
     }
 }

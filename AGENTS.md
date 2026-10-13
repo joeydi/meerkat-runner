@@ -223,7 +223,7 @@ Map argv/executable to a framework label: `next dev` → Next.js, `vite` → Vit
 
 ### Flow
 
-1. `NSOpenPanel` (directories only) or drag a folder onto the menu.
+1. `NSOpenPanel` (directories only), or drag a folder onto the Add server window. (Not onto the menu: a `MenuBarExtra(.window)` closes as soon as Finder becomes active, so it can't receive a drag.)
 2. Run all detectors concurrently against the folder. Detectors are **pure functions of file contents**: they read files with a 1 MB size cap per file and MUST NOT execute anything, spawn processes, or touch the network.
 3. Merge results into ranked `Proposal`s; show the Add sheet (§9.2).
 4. User picks or edits a proposal → approval gate (§8.2) → saved.
@@ -307,7 +307,7 @@ Mark the server **running** once a listener appears. If `healthURL` is set, also
 
 ### 6.5 Stopping
 
-Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PID + start time + executable path still match what was recorded. Abort on mismatch (PID reuse).
+Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PID + start time + executable path still match what was recorded. Abort on mismatch (PID reuse). A process that `exec`s keeps its PID and start time but changes its executable path (`python3` → `Python.app`, `/bin/sh` → `bash`, `bin/dev` → `exec rails server`); when PID and start time match, refresh the recorded path rather than aborting. A different start time always aborts.
 
 **Runner-launched servers:** `killpg(pgid, SIGTERM)` → wait up to 5 s → `killpg(pgid, SIGKILL)`. Because of `SETSID`, the group contains exactly the server and its children (esbuild, webpack workers).
 
@@ -322,7 +322,7 @@ Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PI
 
 ### 6.6 Localhost-only binding
 
-The app cannot force a bind address. When `preferLocalhostBind` is on, the detector's framework entry adds the right flag or env (Vite `--host 127.0.0.1`, Next `-H 127.0.0.1`, Astro `--host 127.0.0.1`, Django `127.0.0.1:<port>`, Rails `-b 127.0.0.1`, generic `HOST=127.0.0.1`). The resulting command is what gets approved and fingerprinted. If the server still binds a wildcard address, show the **LAN visible** badge.
+The app cannot force a bind address. When `preferLocalhostBind` is on, the detector's framework entry adds the right flag or env (Vite `--host 127.0.0.1`, Next `-H 127.0.0.1`, Astro `--host 127.0.0.1`, Django `127.0.0.1:<port>`, Rails `-b 127.0.0.1`, generic `HOST=127.0.0.1`). The resulting command is what gets approved and fingerprinted. If the server still binds a wildcard address, show the **LAN visible** globe icon.
 
 ### 6.7 Quit and relaunch
 
@@ -398,7 +398,7 @@ Sections, in order (hide a section when it's empty):
 
 | Section | Row content | Actions |
 | --- | --- | --- |
-| Running | Status dot, name, `Framework · localhost:port · uptime` | Open in browser, Logs, Stop. Badges: **LAN visible** (wildcard bind), **Started in Terminal** (matched but not launched by Runner) |
+| Running | Status dot, name, `Framework · localhost:port · uptime` | Open in browser, Logs, Stop. Indicators: **LAN visible** globe icon with a tooltip (wildcard bind), **Started in Terminal** badge (matched but not launched by Runner) |
 | Running — started in terminal | Same as above, with the badge | Stop, **Restart in Runner**, Open, Logs (Logs shows "Output is in your terminal" since Runner has no PTY for it) |
 | Stopped | Hollow dot, name, `Framework · command · :port` | Start. Crashed rows show exit code + "View logs" |
 | Needs approval | Warning dot | Review (opens §9.3) |

@@ -51,11 +51,17 @@ targets:
       - package: RunnerKit
         product: Models
       - package: RunnerKit
+        product: Detection
+      - package: RunnerKit
+        product: Approval
+      - package: RunnerKit
         product: Registry
       - package: RunnerKit
         product: Scanner
       - package: RunnerKit
         product: Store
+      - package: RunnerKit
+        product: Supervisor
       # Sparkle 2 is added in v0.3 (the only allowed third-party dependency).
 
 schemes:

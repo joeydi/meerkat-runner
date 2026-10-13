@@ -29,14 +29,18 @@ public struct LogBuffer: Sendable {
     }
 
     /// Appends raw PTY bytes; incomplete trailing lines are held until the next newline.
-    public mutating func append(_ bytes: Data) {
+    /// Returns the lines completed by this call.
+    @discardableResult
+    public mutating func append(_ bytes: Data) -> [Line] {
         partial.append(bytes)
+        var completed: [Line] = []
         while let newline = partial.firstIndex(of: UInt8(ascii: "\n")) {
             var lineData = partial[partial.startIndex..<newline]
             if lineData.last == UInt8(ascii: "\r") { lineData = lineData.dropLast() }
-            appendLine(String(decoding: lineData, as: UTF8.self))
+            completed.append(appendLine(String(decoding: lineData, as: UTF8.self)))
             partial = Data(partial[partial.index(after: newline)...])
         }
+        return completed
     }
 
     public mutating func clear() {
@@ -45,7 +49,7 @@ public struct LogBuffer: Sendable {
         partial.removeAll()
     }
 
-    private mutating func appendLine(_ raw: String) {
+    private mutating func appendLine(_ raw: String) -> Line {
         let line = Line(raw: raw, plain: ANSI.strip(raw))
         if storage.count < capacity {
             storage.append(line)
@@ -53,6 +57,7 @@ public struct LogBuffer: Sendable {
             storage[head] = line
             head = (head + 1) % capacity
         }
+        return line
     }
 }
 

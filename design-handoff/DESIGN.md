@@ -47,8 +47,8 @@ Prefer the semantic SwiftUI or AppKit colour in the right column. Define the hex
 | `statusRunning` | Running dot | #1F8A4C | #30D158 | `Color(nsColor: .systemGreen)` |
 | `statusStopped` | Hollow dot stroke | #8E8E93 | #636366 | `.tertiary` |
 | `statusOther` | Other-listener dot | #8E8E93 | #636366 | `.tertiary` |
-| `warningText` | LAN visible badge text, warning icon | #9A4A00 | #FFB35C | Asset colour |
-| `warningFill` | LAN visible badge bg, warning icon tile | rgba(214,120,0,.14) | rgba(255,159,10,.20) | Asset colour |
+| `warningText` | LAN globe icon, warning icon | #9A4A00 | #FFB35C | Asset colour |
+| `warningFill` | Warning icon tile | rgba(214,120,0,.14) | rgba(255,159,10,.20) | Asset colour |
 | `errorText` | Crashed state, exit code | #B3261E | #FF6961 | Asset colour |
 | `diffRemovedText` | Diff `−` line | #8F1D1D | #FF8A80 | Asset colour |
 | `diffRemovedFill` | Diff `−` line bg | rgba(200,40,40,.08) | rgba(255,69,58,.16) | Asset colour |
@@ -117,7 +117,8 @@ Base unit 2 pt; most values are multiples of 4.
 | Start | `play.fill` |
 | Restart in Runner | `arrow.clockwise` |
 | Folder / Add from folder | `folder` |
-| Warning (re-approval, LAN) | `exclamationmark.triangle.fill` |
+| Warning (re-approval) | `exclamationmark.triangle.fill` |
+| LAN visible (wildcard bind) | `globe`, 12 pt, `warningText`, with the LAN tooltip |
 | Safety callout | `lock.shield` |
 | Started in Terminal badge | `terminal` |
 | Crashed | `xmark.octagon.fill` |
@@ -133,7 +134,7 @@ Build these as small SwiftUI views and reuse them everywhere.
 8 pt circle. Running → filled `statusRunning`. Starting/stopping → `statusRunning` at 50% opacity with a 1 s opacity pulse (off when Reduce Motion is on). Stopped → hollow 1.5 pt `statusStopped` ring. Needs approval → filled `warningText`. Crashed → filled `errorText`. Other listener → filled `statusOther`. On a selected (accent-filled) row the dot is white. `accessibilityHidden(true)`; the state is spoken by the row's label.
 
 ### `Badge(text, style)`
-Styles: `.warning` (LAN visible: `warningText` on `warningFill`), `.neutral` (Started in Terminal: `.secondary` on `fillControl`, `terminal` glyph at 10 pt), `.accent` (Suggested: accent text on accent at 10% opacity). Never truncate; badges hide before the meta line truncates.
+Styles: `.warning` (`warningText` on `warningFill`), `.neutral` (Started in Terminal: `.secondary` on `fillControl`, `terminal` glyph at 10 pt), `.accent` (Suggested: accent text on accent at 10% opacity). Never truncate; badges hide before the meta line truncates.
 
 ### `IconButton(symbol, label, prominence)`
 26 × 26 (row) or 28 × 28 (header). Rows: background `fillControl`; on a selected row, white glyph on white at 18% opacity. Header: no background until hover (`fillControl`). **Always** has `.help(label)` (tooltip) and `.accessibilityLabel(label)`.
@@ -147,7 +148,7 @@ Trailing slot by state:
 
 | State | Trailing (at rest) | Trailing (hover or selected) |
 | --- | --- | --- |
-| Running, managed | Badges (LAN visible) or nothing | Open · Logs · Stop |
+| Running, managed | LAN globe or nothing | Open · Logs · Stop |
 | Running, started in Terminal | `Started in Terminal` badge | Open · Restart in Runner · Stop |
 | Starting / Stopping | `ProgressView().controlSize(.small)` | same |
 | Stopped | Start button (always visible) | Start |
@@ -256,7 +257,7 @@ When it's opened from an auto-start notification, the primary button reads "Appr
 | Esc | Clear filter, then close |
 | Type any character | Focuses the filter |
 
-Drag a folder from Finder onto the open dropdown → Add sheet for that folder. Show a dashed accent outline around the list while dragging.
+Drag a folder from Finder onto the Add server window → detect that folder. Show a dashed accent outline around the window content while dragging. (The dropdown can't take drops: it closes as soon as Finder becomes active.)
 
 Stop on a terminal-started server shows a confirmation popover anchored to the button: "Stop `<name>`? It was started in Terminal. The terminal stays open." [Cancel] [Stop]. Managed servers stop without confirmation.
 
@@ -284,8 +285,8 @@ Remove from Runner asks for confirmation as a sheet. If the server is running: "
 | Header summary | `3 running · 1 stopped · 2 other` |
 | Filter placeholder | `Filter by name or port` |
 | Section headers | `Running`, `Needs approval`, `Stopped`, `Other listeners` (rendered uppercase) |
-| Badges | `LAN visible`, `Started in Terminal`, `Suggested` |
-| LAN tooltip | `Listening on all network interfaces. Other devices on your network can reach it.` |
+| Badges | `Started in Terminal`, `Suggested` |
+| LAN globe tooltip | `Listening on all network interfaces. Other devices on your network can reach it.` |
 | Footer | `Add Server from Folder…`, `Stop All Managed Servers`, `Made by Meerkat` |
 | Safety callout | `This command runs as you, inside <path>. Nothing has run yet. If the script changes later, you'll be asked to approve it again.` |
 | Re-approval title | `The start script for <name> changed` |

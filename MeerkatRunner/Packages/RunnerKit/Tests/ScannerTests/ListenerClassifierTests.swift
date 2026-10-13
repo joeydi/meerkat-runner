@@ -9,6 +9,8 @@ final class ListenerClassifierTests: XCTestCase {
 
     func testFrameworkTable() {
         XCTAssertEqual(label(["node", "/Users/me/app/node_modules/.bin/next", "dev"]), "Next.js")
+        XCTAssertEqual(label(["next-server (v16.3.6)"]), "Next.js")
+        XCTAssertEqual(label(["node", "node_modules/.bin/next", "start"]), "Next.js")
         XCTAssertEqual(label(["node", "/Users/me/app/node_modules/.bin/vite"]), "Vite")
         XCTAssertEqual(label(["node", "node_modules/.bin/astro", "dev"]), "Astro")
         XCTAssertEqual(label(["ruby", "bin/rails", "server"], exe: "/usr/bin/ruby"), "Rails")

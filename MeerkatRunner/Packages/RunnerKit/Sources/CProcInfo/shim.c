@@ -37,6 +37,18 @@ int cpi_list_pids(uid_t uid, pid_t *buffer, int capacity) {
     return bytes / (int)sizeof(pid_t);
 }
 
+int cpi_list_pgrp_pids(pid_t pgid, pid_t *buffer, int capacity) {
+    if (buffer == NULL || capacity <= 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    int bytes = proc_listpids(PROC_PGRP_ONLY, (uint32_t)pgid, buffer, capacity * (int)sizeof(pid_t));
+    if (bytes < 0) {
+        return -1;
+    }
+    return bytes / (int)sizeof(pid_t);
+}
+
 int cpi_bsd_info(pid_t pid, cpi_bsdinfo *out) {
     if (out == NULL) {
         errno = EINVAL;

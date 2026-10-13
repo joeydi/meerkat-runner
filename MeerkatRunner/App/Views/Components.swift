@@ -117,6 +117,20 @@ struct Badge: View {
     }
 }
 
+/// Wildcard bind (0.0.0.0 / ::): other devices on the network can reach the server. An orange globe
+/// with a tooltip, so it takes less room than a text badge (DESIGN.md §2.4).
+struct LANIndicator: View {
+    static let tooltip = "Listening on all network interfaces. Other devices on your network can reach it."
+
+    var body: some View {
+        Image(systemName: "globe")
+            .font(.system(size: 12))
+            .foregroundStyle(Tokens.Colors.warningText)
+            .help(Self.tooltip)
+            .accessibilityLabel("Visible on the local network")
+    }
+}
+
 /// Icon-only button. Always has a tooltip and an accessibility label (DESIGN.md §3 `IconButton`).
 struct IconButton: View {
     enum Size { case row, header }
@@ -172,6 +186,7 @@ struct InfoCallout: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: symbol).font(.system(size: 14))
             text.font(.system(size: 12)).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(.secondary)
         .padding(.vertical, 10)
@@ -191,6 +206,9 @@ struct DiffView: View {
 
     let title: String
     let lines: [Line]
+    /// Measured height of the lines. A bare ScrollView has no ideal height, so in a window sized to
+    /// its content it would collapse to zero.
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -206,8 +224,10 @@ struct DiffView: View {
                         row(line)
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
-            .frame(maxHeight: 220)
+            // Grow with the diff up to 220 pt (DESIGN.md §3 DiffView), then scroll.
+            .frame(height: min(contentHeight, 220))
         }
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor)))
@@ -222,6 +242,7 @@ struct DiffView: View {
         }
         Text("\(prefix) \(text)")
             .font(.system(size: 12, design: .monospaced))
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
