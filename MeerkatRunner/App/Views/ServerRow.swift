@@ -1,5 +1,6 @@
 import AppKit
 import Models
+import Scanner
 import SwiftUI
 
 /// A registered project row (DESIGN.md §3 `ServerRow`).
@@ -193,7 +194,13 @@ struct OtherListenerRow: View {
     /// Pre-fills the Add window with the listener's working directory (AGENTS.md §9.1).
     private func addAsServer() {
         guard let cwd = group.cwd else { return }
-        addServerModel.load(URL(fileURLWithPath: cwd, isDirectory: true))
+        let listener = group.primary
+        let running = AddServerModel.RunningServer(
+            argv: listener.argv,
+            port: group.port,
+            framework: ListenerClassifier.classify(executablePath: listener.executablePath, argv: listener.argv)
+        )
+        addServerModel.load(URL(fileURLWithPath: cwd, isDirectory: true), running: running)
         NSApp.activate()
         openWindow(id: WindowID.addServer)
     }

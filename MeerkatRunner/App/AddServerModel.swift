@@ -64,8 +64,16 @@ final class AddServerModel {
         startAtLogin = false
     }
 
+    /// A server already running in the folder, offered as a proposal ("Add as server…").
+    struct RunningServer: Sendable {
+        var argv: [String]
+        var port: Int
+        var framework: String?
+    }
+
     /// Detects start commands for `url`. Safe to call repeatedly; only the latest call wins.
-    func load(_ url: URL) {
+    /// With `running`, also proposes that process's own command line.
+    func load(_ url: URL, running: RunningServer? = nil) {
         reset()
         let folder = url.standardizedFileURL.resolvingSymlinksInPath()
         self.folder = folder
@@ -77,6 +85,14 @@ final class AddServerModel {
             let result = await Self.detect(folder)
             guard id == loadID else { return }
             proposals = result.proposals
+            if let running,
+               let proposal = RunningProcessProposal.make(
+                   argv: running.argv, folder: folder, port: running.port,
+                   framework: running.framework, rankedFirst: proposals.isEmpty
+               ),
+               !proposals.contains(where: { $0.command == proposal.command }) {
+                proposals.append(proposal)
+            }
             packageManager = result.packageManager
             envFiles = result.envFiles.enumerated().map { index, file in
                 // Pre-select the most specific env file only.
