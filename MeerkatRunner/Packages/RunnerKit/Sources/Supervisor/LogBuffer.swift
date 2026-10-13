@@ -57,7 +57,7 @@ public struct LogBuffer: Sendable {
 }
 
 public enum ANSI {
-    nonisolated(unsafe) private static let escape = try! NSRegularExpression(
+    private static let escape = try! NSRegularExpression(
         pattern: #"\x{1B}(?:\[[0-?]*[ -/]*[@-~]|\][^\x{07}\x{1B}]*(?:\x{07}|\x{1B}\\)|[@-Z\\-_])"#
     )
 

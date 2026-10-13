@@ -9,12 +9,12 @@ public enum Redactor {
     private static let keyWords = "key|token|secret|password|passwd|auth|cookie|session"
 
     // `API_KEY=abc`, `export SESSION_SECRET="abc def"`
-    nonisolated(unsafe) private static let assignment = try! NSRegularExpression(
+    private static let assignment = try! NSRegularExpression(
         pattern: #"(?i)\b([A-Za-z0-9_.-]*(?:"# + keyWords + #")[A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|[^\s"'&,;]+)"#
     )
 
     // `"apiKey": "abc"`
-    nonisolated(unsafe) private static let jsonPair = try! NSRegularExpression(
+    private static let jsonPair = try! NSRegularExpression(
         pattern: #"(?i)("[^"]*(?:"# + keyWords + #")[^"]*"\s*:\s*)"(?:[^"\\]|\\.)*""#
     )
 
