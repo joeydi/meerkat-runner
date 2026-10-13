@@ -234,7 +234,7 @@ When it's opened from an auto-start notification, the primary button reads "Appr
 **Log window.** A `Window` per project, titled `<name> — Logs`, default 720 × 440, resizable. Toolbar: search field, "Copy All (Redacted)", "Clear", "Reveal Log File". Content: monospace 12 pt, ANSI colours mapped to the system palette, line height 1.35, text selectable. Auto-scrolls unless the user has scrolled up, in which case a "Jump to latest" pill appears bottom-centre. For terminal-started servers: centred `.secondary` text, "This server was started in Terminal, so its output is there. Restart it in Runner to see logs here." with a Restart in Runner button.
 
 **Settings.** A standard `Settings` scene with tabs:
-- **General:** Launch at login · On quit (Stop managed servers / Leave running / Ask) · Hide system listeners · Show port count in menu bar.
+- **General:** Launch at login · On quit (Stop managed servers / Leave running / Ask) · Hide system listeners · Hide app listeners · Show port count in menu bar · **Open menu** shortcut recorder (a button showing the shortcut in monospace, or "Record Shortcut"; while recording it reads "Type shortcut…"; a small ⓧ removes it; refusals such as "Include ⌘, ⌥ or ⌃." or "⌘Space is already used by another app." show below in warning colour). Default: no shortcut.
 - **Environment:** a read-only view of the captured PATH (monospace, selectable) · "Reload Shell Environment" button with a last-loaded timestamp.
 - **About:** app icon, version, "Made by Meerkat" link, Acknowledgements.
 
@@ -251,7 +251,7 @@ When it's opened from an auto-start notification, the primary button reads "Appr
 | ↑ / ↓ | Move selection through actionable rows (skips headers) |
 | Tab / Shift-Tab | Move focus through every control in order, wrapping: + and Settings, the filter, each row followed by its action buttons, Show N more, then the footer items. Works whether or not the system "Keyboard navigation" setting is on; the menu draws its own focus ring |
 | ← / → | Step from a row into its action buttons and back (not while typing in the filter) |
-| Return / Space | Press the focused control. On a row: open a running server in the browser, start a stopped one, review one that needs approval. Space types a space while the filter has focus |
+| Return / Space | Press the focused control. On a row: open a running server in the browser, start a stopped one, review one that needs approval. Space types a space while the filter has focus. When the action takes you elsewhere (opens in the browser, Logs, Review, Settings, Add Server, Reveal Folder, Add as Server…) the menu closes first, as choosing a menu item would; Start, Stop, Restart, Copy URL, Show more and Stop All keep it open so you can see the result |
 | ⌘. | Stop selected |
 | ⌘R | Restart selected (Restart in Runner for terminal-started ones) |
 | ⌘L | Show logs |

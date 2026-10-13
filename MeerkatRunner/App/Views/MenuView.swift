@@ -55,7 +55,7 @@ struct MenuView: View {
             footer
         }
         .frame(width: Tokens.popoverWidth)
-        .background(KeyEventMonitor { handleKey($0) })
+        .background(KeyEventMonitor(handler: { handleKey($0) }, onWindow: { MenuBarToggle.menuWindow = $0 }))
         // A focused control that disappears (stopped, filtered away, disabled) hands focus to its
         // nearest neighbour so Tab and Return keep working.
         .onChange(of: focusOrder) { previous, current in
@@ -91,15 +91,10 @@ struct MenuView: View {
             IconButton(
                 symbol: "plus", label: "Add Server from Folder…", size: .header, isFocused: focus == .addServer
             ) { addServer() }
-            SettingsLink {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 15))
-                    .frame(width: 28, height: 28)
-                    .menuFocusRing(focus == .settings, cornerRadius: 6)
+            // A button rather than SettingsLink, so Runner is activated and the window comes to the front.
+            IconButton(symbol: "gearshape", label: "Settings", size: .header, isFocused: focus == .settings) {
+                openSettingsWindow()
             }
-            .buttonStyle(.plain)
-            .help("Settings")
-            .accessibilityLabel("Settings")
         }
         .padding(.top, 12)
         .padding(.trailing, 12)
@@ -293,7 +288,11 @@ struct MenuView: View {
             focus = MenuNavigation.advance(focus, in: order, by: command == .nextFocus ? 1 : -1)
             filterFocused = focus == .filter
         case .activate:
-            activate(focus, project: selectedProject, listener: selectedListener)
+            let target = focus
+            if MenuNavigation.activationLeavesMenu(target, projectState: selectedProject?.state) {
+                MenuBarToggle.closeIfOpen()
+            }
+            activate(target, project: selectedProject, listener: selectedListener)
         case .stop:
             guard let selectedProject else { return false }
             actions.stop(selectedProject)
@@ -302,6 +301,7 @@ struct MenuView: View {
             actions.restart(selectedProject)
         case .logs:
             guard let selectedProject else { return false }
+            MenuBarToggle.closeIfOpen()
             actions.showLogs(selectedProject)
         case .copyURL:
             if let port = selectedProject?.project.port ?? selectedListener?.port {
@@ -310,6 +310,7 @@ struct MenuView: View {
                 return false
             }
         case .settings:
+            MenuBarToggle.closeIfOpen()
             openSettingsWindow()
         case .clearFilter:
             filter = ""
@@ -356,6 +357,7 @@ struct MenuView: View {
     private func openSettingsWindow() {
         NSApp.activate()
         openSettings()
+        WindowFront.raise(WindowID.settings)
     }
 
     private func matchesRow(_ row: ProjectRow) -> Bool {
@@ -442,6 +444,7 @@ struct MenuView: View {
         addServerModel.requestFolderPicker()
         NSApp.activate()
         openWindow(id: WindowID.addServer)
+        WindowFront.raise(WindowID.addServer)
     }
 }
 

@@ -342,7 +342,7 @@ Exit with a non-zero code within 10 s of start, or any unexpected exit → state
 - Menu bar icon: template image; badge shows the running count (hide at 0).
 - `Info.plist`: `LSUIElement = YES`, `LSMinimumSystemVersion = 14.0`.
 - Launch at login: `SMAppService.mainApp.register()/unregister()` from Settings.
-- Global hotkey to open the menu (v0.3): user-configurable; default none.
+- Global hotkey to open the menu (v0.3): user-configurable; default none. Registered with Carbon `RegisterEventHotKey` (no Accessibility or Input Monitoring permission; it only sees that one combination) and recorded in Settings › General (Esc cancels, Delete removes; needs ⌘, ⌥ or ⌃ unless it is a function key). Pressing it toggles the menu by clicking the status item, since `MenuBarExtra` has no open API.
 - Settings window: General (launch at login, on quit, hide system listeners, hide app listeners, poll intervals), Environment (reload shell env, show captured PATH), About (version, "Made by Meerkat" link → `[MEERKAT WAITLIST URL]`).
 - Deep link scheme `meerkatrunner://` (v0.3): `start?id=<uuid>` and `stop?id=<uuid>` only, only for already-approved projects, always posts a notification. No command text is ever accepted from a URL.
 

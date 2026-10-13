@@ -177,4 +177,28 @@ final class MenuNavigationTests: XCTestCase {
         )
         XCTAssertEqual(RowAction.forListener(hasFolder: false, canAddAsServer: false), [.open, .copyURL])
     }
+
+    func testKeyboardActionsThatGoElsewhereCloseTheMenu() {
+        let project = MenuRowID.project(UUID())
+        let listener = MenuRowID.listener("10:3000")
+        let running = ServerState.running(managed: true, listeners: [], since: Date())
+        // Somewhere else: browser, windows, Finder.
+        XCTAssertTrue(MenuNavigation.activationLeavesMenu(.row(project), projectState: running))
+        XCTAssertTrue(MenuNavigation.activationLeavesMenu(.row(project), projectState: .needsReapproval))
+        XCTAssertTrue(MenuNavigation.activationLeavesMenu(.row(listener), projectState: nil))
+        for action: RowAction in [.open, .logs, .review, .revealFolder, .addAsServer] {
+            XCTAssertTrue(MenuNavigation.activationLeavesMenu(.action(project, action), projectState: running), "\(action)")
+        }
+        for focus: MenuFocus in [.addServer, .footerAdd, .settings] {
+            XCTAssertTrue(MenuNavigation.activationLeavesMenu(focus, projectState: nil), "\(focus)")
+        }
+        // Stays open to show the result.
+        XCTAssertFalse(MenuNavigation.activationLeavesMenu(.row(project), projectState: .stopped))
+        for action: RowAction in [.start, .stop, .restart, .copyURL] {
+            XCTAssertFalse(MenuNavigation.activationLeavesMenu(.action(project, action), projectState: running), "\(action)")
+        }
+        for focus: MenuFocus? in [nil, .filter, .showMore, .footerStopAll] {
+            XCTAssertFalse(MenuNavigation.activationLeavesMenu(focus, projectState: nil))
+        }
+    }
 }

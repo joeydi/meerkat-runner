@@ -251,10 +251,10 @@ public actor ProcessSupervisor {
         if isChild {
             var code: Int32 = 0
             if csp_reap(pid, &code) == 1 {
-                Task { await didExit(projectID: projectID, pid: pid, exitCode: code) }
+                Task { didExit(projectID: projectID, pid: pid, exitCode: code) }
             }
         } else if kill(pid, 0) != 0, errno == ESRCH {
-            Task { await didExit(projectID: projectID, pid: pid, exitCode: nil) }
+            Task { didExit(projectID: projectID, pid: pid, exitCode: nil) }
         }
     }
 

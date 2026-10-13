@@ -104,11 +104,13 @@ struct ProjectActions {
     func review(_ projectID: UUID) {
         NSApp.activate()
         openWindow(id: WindowID.reapproval, value: projectID)
+        WindowFront.raise(WindowID.reapproval)
     }
 
     func showLogs(_ row: ProjectRow) {
         NSApp.activate()
         openWindow(id: WindowID.logs, value: row.project.id)
+        WindowFront.raise(WindowID.logs)
     }
 
     func open(_ row: ProjectRow) {
@@ -180,6 +182,7 @@ struct ListenerActions {
         addServerModel.load(URL(fileURLWithPath: cwd, isDirectory: true), running: running)
         NSApp.activate()
         openWindow(id: WindowID.addServer)
+        WindowFront.raise(WindowID.addServer)
     }
 }
 
