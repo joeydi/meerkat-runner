@@ -197,7 +197,9 @@ public actor ProcessSupervisor {
     private func makeLog(for projectID: UUID, resume: Bool) -> LogStore {
         let url = logsDirectory?.appendingPathComponent("\(projectID.uuidString).log")
         return LogStore(fileURL: url, resume: resume) { [weak self] port in
-            Task { await self?.portSeen(projectID: projectID, port: port) }
+            // Unwrap first: a weak capture is a mutable variable and can't be sent into a Task.
+            guard let supervisor = self else { return }
+            Task { await supervisor.portSeen(projectID: projectID, port: port) }
         }
     }
 
@@ -239,7 +241,8 @@ public actor ProcessSupervisor {
         let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: ioQueue)
         source.setEventHandler { [weak self] in
             let code = isChild ? Self.reap(pid) : nil
-            Task { await self?.didExit(projectID: projectID, pid: pid, exitCode: code) }
+            guard let supervisor = self else { return }
+            Task { await supervisor.didExit(projectID: projectID, pid: pid, exitCode: code) }
         }
         process.exitSource = source
         source.resume()
