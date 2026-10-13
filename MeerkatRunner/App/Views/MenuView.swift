@@ -104,10 +104,10 @@ struct MenuView: View {
 
     @ViewBuilder
     private var sections: some View {
-        let running = registry.runningRows.filter(matchesRow)
-        let needsApproval = registry.needsApprovalRows.filter(matchesRow)
-        let stopped = registry.stoppedRows.filter(matchesRow)
-        let other = registry.visibleOtherListeners.filter(matchesListener)
+        let running = registry.runningRows.filter { matchesRow($0) }
+        let needsApproval = registry.needsApprovalRows.filter { matchesRow($0) }
+        let stopped = registry.stoppedRows.filter { matchesRow($0) }
+        let other = registry.visibleOtherListeners.filter { matchesListener($0) }
         // While filtering, show every match; otherwise collapse to the first few.
         let collapsed = filter.isEmpty && !showAllOther && other.count > Self.otherListenerLimit
         let shownOther = collapsed ? Array(other.prefix(Self.otherListenerLimit)) : other
