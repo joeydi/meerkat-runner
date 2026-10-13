@@ -40,7 +40,8 @@ public final class LogStore: @unchecked Sendable {
         )
         if resume, let tail = Self.tail(of: fileURL, bytes: Self.resumeBytes) {
             buffer.append(tail)
-            buffer.append(Data("\n".utf8))
+            // Complete a trailing partial line so new output starts on its own line.
+            if tail.last != UInt8(ascii: "\n") { buffer.append(Data("\n".utf8)) }
         }
         if !fm.fileExists(atPath: fileURL.path) {
             fm.createFile(atPath: fileURL.path, contents: nil, attributes: [.posixPermissions: 0o600])

@@ -307,7 +307,7 @@ Mark the server **running** once a listener appears. If `healthURL` is set, also
 
 ### 6.5 Stopping
 
-Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PID + start time + executable path still match what was recorded. Abort on mismatch (PID reuse).
+Before sending **any** signal, re-read the target's `proc_bsdinfo` and verify PID + start time + executable path still match what was recorded. Abort on mismatch (PID reuse). A process that `exec`s keeps its PID and start time but changes its executable path (`python3` → `Python.app`, `/bin/sh` → `bash`, `bin/dev` → `exec rails server`); when PID and start time match, refresh the recorded path rather than aborting. A different start time always aborts.
 
 **Runner-launched servers:** `killpg(pgid, SIGTERM)` → wait up to 5 s → `killpg(pgid, SIGKILL)`. Because of `SETSID`, the group contains exactly the server and its children (esbuild, webpack workers).
 

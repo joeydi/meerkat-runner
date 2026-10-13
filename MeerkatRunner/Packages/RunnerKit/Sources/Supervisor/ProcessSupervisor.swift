@@ -329,16 +329,23 @@ public actor ProcessSupervisor {
     // MARK: - Stopping
 
     /// Stops a server Runner launched: `killpg(pgid, SIGTERM)` → wait up to 5 s → SIGKILL each remaining
-    /// group member. Identity is re-verified right before every signal (§6.5).
+    /// group member. Identity is re-verified right before every signal (§6.5): PID and start time must
+    /// match; a changed executable path with the same PID and start time is an `exec`, not PID reuse.
     public func stop(projectID: UUID, gracePeriod: Duration = ProcessSupervisor.stopGracePeriod) async throws(SupervisorError) {
         guard let process = managed[projectID] else { return }
         process.stopRequested = true
         let record = process.record
 
         if let current = Self.currentIdentity(pid: record.identity.pid) {
-            guard current == record.identity else {
+            // PID + start time identify the process: a reused PID always has a different start time.
+            guard current.pid == record.identity.pid, current.startTime == record.identity.startTime else {
                 process.stopRequested = false
                 throw .identityMismatch
+            }
+            // Same process, new image: it exec'd (`python3` → Python.app, `/bin/sh` → bash,
+            // `bin/dev` → `exec rails server`). Record the new path and carry on.
+            if current.executablePath != record.identity.executablePath {
+                process.record.identity.executablePath = current.executablePath
             }
             killpg(record.pgid, SIGTERM)
         } else {
