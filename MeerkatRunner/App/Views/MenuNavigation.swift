@@ -191,6 +191,28 @@ enum MenuNavigation {
         return rows[min(max(index + delta, 0), rows.count - 1)]
     }
 
+    /// Whether pressing Return / Space on `focus` takes you somewhere else (the browser, a window,
+    /// Finder), so the menu should close first. Start, stop, copy, Show more and Stop All keep it
+    /// open so you can see the result.
+    /// - Parameter projectState: the focused project row's state, for a row's own primary action.
+    static func activationLeavesMenu(_ focus: MenuFocus?, projectState: ServerState?) -> Bool {
+        switch focus {
+        case nil, .filter, .showMore, .footerStopAll:
+            return false
+        case .addServer, .footerAdd, .settings:
+            return true
+        case .row(.listener):
+            return true // opens in the browser
+        case .row(.project):
+            switch projectState {
+            case .running, .needsReapproval: return true // open in browser / review
+            default: return false // start
+            }
+        case .action(_, let action):
+            return [.open, .logs, .review, .revealFolder, .addAsServer].contains(action)
+        }
+    }
+
     /// A row as Tab sees it: the row itself, then its action buttons.
     struct FocusRow: Equatable {
         var id: MenuRowID

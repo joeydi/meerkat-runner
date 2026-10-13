@@ -52,6 +52,27 @@ enum WindowID {
     static let addServer = "add-server"
     static let reapproval = "reapproval"
     static let logs = "logs"
+    /// SwiftUI's own identifier for the `Settings` scene's window.
+    static let settings = "com_apple_SwiftUI_Settings_window"
+}
+
+/// Brings a window Runner just opened in front of the app you were using. On macOS 14+
+/// `NSApp.activate()` is only a request, and a menu bar app that isn't already active can be
+/// refused, which left windows (notably Settings) opening behind the frontmost app.
+@MainActor
+enum WindowFront {
+    /// `id` is a `WindowID`; SwiftUI window identifiers start with it (e.g. `logs-AppWindow-2`).
+    static func raise(_ id: String) {
+        // The window exists once SwiftUI has processed the open request.
+        DispatchQueue.main.async {
+            guard let window = NSApp.orderedWindows.first(where: {
+                $0.isVisible && ($0.identifier?.rawValue.hasPrefix(id) ?? false)
+            }) else { return }
+            window.orderFrontRegardless()
+            window.makeKey()
+            NSApp.activate()
+        }
+    }
 }
 
 enum MeerkatLinks {
@@ -126,6 +147,7 @@ enum WindowOpener {
     static func showLogs(for projectID: UUID) {
         NSApp.activate()
         openWindow?(id: WindowID.logs, value: projectID)
+        WindowFront.raise(WindowID.logs)
     }
 }
 
