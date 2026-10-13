@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 /// A selectable row in the dropdown (headers aren't selectable).
 enum MenuRowID: Hashable {
