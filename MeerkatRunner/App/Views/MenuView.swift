@@ -9,6 +9,9 @@ struct MenuView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var filter = ""
     @State private var showAllOther = false
+    /// Measured height of the section list. A bare ScrollView has no ideal height, and
+    /// MenuBarExtra(.window) sizes itself to ideal height, so the list would collapse to zero.
+    @State private var listHeight: CGFloat = 0
 
     /// Other listeners shown before "Show N more" (DESIGN.md §4.1).
     private static let otherListenerLimit = 5
@@ -25,8 +28,10 @@ struct MenuView: View {
                 ScrollView {
                     sections
                         .padding(.horizontal, 6)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
                 }
-                .frame(maxHeight: Tokens.popoverMaxHeight)
+                // Grow with the content up to the cap (DESIGN.md §2.3), then scroll.
+                .frame(height: min(listHeight, Tokens.popoverMaxHeight))
             }
             Divider()
             footer
@@ -121,7 +126,7 @@ struct MenuView: View {
         let visible = groups.indices.filter { counts[$0] > 0 }
 
         // TODO(v0.3): keyboard selection (§9.1, DESIGN.md §5).
-        LazyVStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(visible, id: \.self) { index in
                 if index != visible.first {
                     Divider().padding(.horizontal, 10).padding(.vertical, 6)
