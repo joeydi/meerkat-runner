@@ -247,7 +247,9 @@ When it's opened from an auto-start notification, the primary button reads "Appr
 | Key | Action (dropdown) |
 | --- | --- |
 | ↑ / ↓ | Move selection through actionable rows (skips headers) |
-| Return | Open selected running server in browser; start a stopped one |
+| Tab / Shift-Tab | Move focus through every control in order, wrapping: + and Settings, the filter, each row followed by its action buttons, Show N more, then the footer items. Works whether or not the system "Keyboard navigation" setting is on; the menu draws its own focus ring |
+| ← / → | Step from a row into its action buttons and back (not while typing in the filter) |
+| Return / Space | Press the focused control. On a row: open a running server in the browser, start a stopped one, review one that needs approval. Space types a space while the filter has focus |
 | ⌘. | Stop selected |
 | ⌘R | Restart selected (Restart in Runner for terminal-started ones) |
 | ⌘L | Show logs |

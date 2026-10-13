@@ -11,8 +11,9 @@ struct MenuView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var filter = ""
     @State private var showAllOther = false
-    /// Keyboard selection (DESIGN.md §5). Hover is separate and never moves it.
-    @State private var selection: MenuRowID?
+    /// Keyboard focus (DESIGN.md §5): a header button, the filter, a row or one of its actions, Show
+    /// more, or a footer item. Hover is separate and never moves it.
+    @State private var focus: MenuFocus?
     @FocusState private var filterFocused: Bool
     /// Measured height of the section list. A bare ScrollView has no ideal height, and
     /// MenuBarExtra(.window) sizes itself to ideal height, so the list would collapse to zero.
@@ -24,7 +25,7 @@ struct MenuView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if totalRowCount >= 6 {
+            if showsFilter {
                 filterField
             }
             if registry.storeIntegrityWarning {
@@ -41,8 +42,12 @@ struct MenuView: View {
                     }
                     // Grow with the content up to the cap (DESIGN.md §2.3), then scroll.
                     .frame(height: min(listHeight, Tokens.popoverMaxHeight))
-                    .onChange(of: selection) {
-                        if let selection { proxy.scrollTo(selection) }
+                    .onChange(of: focus) {
+                        if let row = focus?.rowID {
+                            proxy.scrollTo(row)
+                        } else if focus == .showMore {
+                            proxy.scrollTo(MenuFocus.showMore)
+                        }
                     }
                 }
             }
@@ -51,11 +56,23 @@ struct MenuView: View {
         }
         .frame(width: Tokens.popoverWidth)
         .background(KeyEventMonitor { handleKey($0) })
+        // A focused control that disappears (stopped, filtered away, disabled) hands focus to its
+        // nearest neighbour so Tab and Return keep working.
+        .onChange(of: focusOrder) { previous, current in
+            focus = MenuNavigation.recover(focus, previous: previous, current: current)
+        }
+        .onChange(of: filterFocused) {
+            if filterFocused, focus?.rowID == nil {
+                focus = .filter
+            } else if !filterFocused, focus == .filter {
+                focus = nil
+            }
+        }
         .onAppear { registry.setPolling(menuOpen: true) }
         .onDisappear {
             registry.setPolling(menuOpen: false)
             showAllOther = false
-            selection = nil
+            focus = nil
             filter = ""
         }
     }
@@ -71,11 +88,14 @@ struct MenuView: View {
                 }
             }
             Spacer()
-            IconButton(symbol: "plus", label: "Add Server from Folder…", size: .header) { addServer() }
+            IconButton(
+                symbol: "plus", label: "Add Server from Folder…", size: .header, isFocused: focus == .addServer
+            ) { addServer() }
             SettingsLink {
                 Image(systemName: "gearshape")
                     .font(.system(size: 15))
                     .frame(width: 28, height: 28)
+                    .menuFocusRing(focus == .settings, cornerRadius: 6)
             }
             .buttonStyle(.plain)
             .help("Settings")
@@ -133,6 +153,28 @@ struct MenuView: View {
         }
     }
 
+    private var showsFilter: Bool { totalRowCount >= 6 }
+
+    /// Each visible row with its action buttons, in display order.
+    private func focusRows(_ shown: Content) -> [MenuNavigation.FocusRow] {
+        (shown.running + shown.needsApproval + shown.stopped).map {
+            .init(id: .project($0.id), actions: ProjectActions.rowActions(for: $0, registry: registry))
+        } + shown.other.map {
+            .init(id: .listener($0.id), actions: ListenerActions.rowActions(for: $0))
+        }
+    }
+
+    /// Every focusable control in Tab order (DESIGN.md §5).
+    private var focusOrder: [MenuFocus] {
+        let shown = content
+        return MenuNavigation.focusOrder(
+            rows: isEmpty ? [] : focusRows(shown),
+            showsFilter: showsFilter,
+            showsShowMore: !isEmpty && shown.hiddenOtherCount > 0,
+            canStopAll: registry.hasManagedServers
+        )
+    }
+
     private var content: Content {
         let other = registry.visibleOtherListeners.filter { matchesListener($0) }
         // While filtering, show every match; otherwise collapse to the first few.
@@ -156,11 +198,16 @@ struct MenuView: View {
             ("Stopped", AnyView(projectRows(shown.stopped))),
             ("Other listeners", AnyView(VStack(spacing: 0) {
                 ForEach(shown.other) { group in
-                    OtherListenerRow(group: group, isSelected: selection == .listener(group.id))
-                        .id(MenuRowID.listener(group.id))
+                    OtherListenerRow(
+                        group: group,
+                        isSelected: focus?.rowID == .listener(group.id),
+                        focusedAction: focusedAction(in: .listener(group.id))
+                    )
+                    .id(MenuRowID.listener(group.id))
                 }
                 if shown.hiddenOtherCount > 0 {
-                    ShowMoreRow(count: shown.hiddenOtherCount) { showAllOther = true }
+                    ShowMoreRow(count: shown.hiddenOtherCount, isFocused: focus == .showMore) { showMore() }
+                        .id(MenuFocus.showMore)
                 }
             })),
         ]
@@ -181,8 +228,27 @@ struct MenuView: View {
 
     private func projectRows(_ rows: [ProjectRow]) -> some View {
         ForEach(rows) { row in
-            ServerRow(row: row, isSelected: selection == .project(row.id))
-                .id(MenuRowID.project(row.id))
+            ServerRow(
+                row: row,
+                isSelected: focus?.rowID == .project(row.id),
+                focusedAction: focusedAction(in: .project(row.id))
+            )
+            .id(MenuRowID.project(row.id))
+        }
+    }
+
+    private func focusedAction(in row: MenuRowID) -> RowAction? {
+        if case .action(row, let action) = focus { return action }
+        return nil
+    }
+
+    /// Reveals the collapsed listeners and moves focus to the first one it revealed.
+    private func showMore() {
+        let other = registry.visibleOtherListeners.filter { matchesListener($0) }
+        showAllOther = true
+        if focus == .showMore {
+            focus = other.indices.contains(Self.otherListenerLimit)
+                ? .row(.listener(other[Self.otherListenerLimit].id)) : nil
         }
     }
 
@@ -200,30 +266,34 @@ struct MenuView: View {
             filterFocused: filterFocused
         ) else { return false }
 
-        let order = content.order
-        if let current = selection, !order.contains(current) { selection = nil }
-        let selectedProject = selection.flatMap { id -> ProjectRow? in
+        let shown = content
+        let rows = isEmpty ? [] : focusRows(shown)
+        let order = focusOrder
+        if let current = focus, !order.contains(current) { focus = nil }
+        let rowID = focus?.rowID
+        let selectedProject = rowID.flatMap { id -> ProjectRow? in
             guard case .project(let projectID) = id else { return nil }
             return registry.projects.first { $0.id == projectID }
         }
-        let selectedListener = selection.flatMap { id -> ListenerGroup? in
+        let selectedListener = rowID.flatMap { id -> ListenerGroup? in
             guard case .listener(let groupID) = id else { return nil }
             return registry.otherListeners.first { $0.id == groupID }
         }
 
         switch command {
-        case .moveUp:
-            selection = MenuNavigation.move(selection, in: order, by: -1)
-        case .moveDown:
-            selection = MenuNavigation.move(selection, in: order, by: 1)
-        case .primary:
-            if let selectedProject {
-                actions.primary(selectedProject)
-            } else if let selectedListener {
-                URLActions.open(port: selectedListener.port)
-            } else {
+        case .moveUp, .moveDown:
+            let next = MenuNavigation.move(rowID, in: rows.map(\.id), by: command == .moveUp ? -1 : 1)
+            focus = next.map { MenuFocus.row($0) } ?? focus
+        case .moveLeft, .moveRight:
+            guard let focused = focus, let rowID, let row = rows.first(where: { $0.id == rowID }) else {
                 return false
             }
+            focus = MenuNavigation.step(focused, actions: row.actions, by: command == .moveLeft ? -1 : 1)
+        case .nextFocus, .previousFocus:
+            focus = MenuNavigation.advance(focus, in: order, by: command == .nextFocus ? 1 : -1)
+            filterFocused = focus == .filter
+        case .activate:
+            activate(focus, project: selectedProject, listener: selectedListener)
         case .stop:
             guard let selectedProject else { return false }
             actions.stop(selectedProject)
@@ -240,17 +310,52 @@ struct MenuView: View {
                 return false
             }
         case .settings:
-            NSApp.activate()
-            openSettings()
+            openSettingsWindow()
         case .clearFilter:
             filter = ""
         case .type(let text):
             // The filter field only exists with 6+ rows (DESIGN.md §4.1).
-            guard totalRowCount >= 6 else { return false }
+            guard showsFilter else { return false }
             filterFocused = true
             filter += text
         }
+        // Return and Space with nothing focused are swallowed too, so Space never lands in the filter.
         return true
+    }
+
+    /// Return / Space: press whatever has keyboard focus, exactly as a click would.
+    private func activate(_ focus: MenuFocus?, project: ProjectRow?, listener: ListenerGroup?) {
+        switch focus {
+        case nil, .filter:
+            break
+        case .addServer, .footerAdd:
+            addServer()
+        case .settings:
+            openSettingsWindow()
+        case .row:
+            if let project {
+                actions.primary(project)
+            } else if let listener {
+                URLActions.open(port: listener.port)
+            }
+        case .action(_, let action):
+            if let project {
+                actions.perform(action, on: project)
+            } else if let listener {
+                ListenerActions(addServerModel: addServerModel, openWindow: openWindow).perform(action, on: listener)
+            }
+        case .showMore:
+            showMore()
+        case .footerStopAll:
+            if registry.hasManagedServers {
+                Task { await registry.stopAllManaged() }
+            }
+        }
+    }
+
+    private func openSettingsWindow() {
+        NSApp.activate()
+        openSettings()
     }
 
     private func matchesRow(_ row: ProjectRow) -> Bool {
@@ -309,9 +414,9 @@ struct MenuView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            FooterRow(title: "Add Server from Folder…", shortcut: "⌘N") { addServer() }
+            FooterRow(title: "Add Server from Folder…", shortcut: "⌘N", isFocused: focus == .footerAdd) { addServer() }
                 .keyboardShortcut("n", modifiers: .command)
-            FooterRow(title: "Stop All Managed Servers") {
+            FooterRow(title: "Stop All Managed Servers", isFocused: focus == .footerStopAll) {
                 Task { await registry.stopAllManaged() }
             }
             .disabled(!registry.hasManagedServers)
@@ -342,6 +447,7 @@ struct MenuView: View {
 
 private struct ShowMoreRow: View {
     let count: Int
+    var isFocused = false
     let action: () -> Void
 
     var body: some View {
@@ -353,12 +459,15 @@ private struct ShowMoreRow: View {
             .padding(.leading, 28)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .menuFocusRing(isFocused, cornerRadius: 6)
+            .accessibilityAddTraits(isFocused ? .isSelected : [])
     }
 }
 
 private struct FooterRow: View {
     let title: String
     var shortcut: String?
+    var isFocused = false
     let action: () -> Void
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
@@ -378,11 +487,13 @@ private struct FooterRow: View {
             .frame(height: 30)
             .contentShape(Rectangle())
             .background(
-                isHovering && isEnabled ? Tokens.Colors.fillControl : .clear,
+                (isHovering || isFocused) && isEnabled ? Tokens.Colors.fillControl : .clear,
                 in: RoundedRectangle(cornerRadius: 6)
             )
+            .menuFocusRing(isFocused, cornerRadius: 6)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isFocused ? .isSelected : [])
         .onHover { isHovering = $0 }
     }
 }

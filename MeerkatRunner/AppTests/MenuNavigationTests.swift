@@ -1,5 +1,6 @@
 import AppKit
 @testable import MeerkatRunner
+import Models
 import XCTest
 
 final class MenuNavigationTests: XCTestCase {
@@ -16,8 +17,8 @@ final class MenuNavigationTests: XCTestCase {
     func testArrowsAndReturn() {
         XCTAssertEqual(command(MenuNavigation.Key.upArrow), .moveUp)
         XCTAssertEqual(command(MenuNavigation.Key.downArrow), .moveDown)
-        XCTAssertEqual(command(MenuNavigation.Key.returnKey, "\r"), .primary)
-        XCTAssertEqual(command(MenuNavigation.Key.keypadEnter), .primary)
+        XCTAssertEqual(command(MenuNavigation.Key.returnKey, "\r"), .activate)
+        XCTAssertEqual(command(MenuNavigation.Key.keypadEnter), .activate)
         // Arrows still navigate while typing in the filter.
         XCTAssertEqual(command(MenuNavigation.Key.downArrow, filterFocused: true), .moveDown)
     }
@@ -63,5 +64,117 @@ final class MenuNavigationTests: XCTestCase {
         // A selection that scrolled out of the list (e.g. filtered away) restarts at the ends.
         XCTAssertEqual(MenuNavigation.move(.project(UUID()), in: rows, by: 1), a)
         XCTAssertNil(MenuNavigation.move(a, in: [], by: 1))
+    }
+
+    // MARK: - Tab, Space, ←/→
+
+    func testTabAndShiftTab() {
+        XCTAssertEqual(command(MenuNavigation.Key.tab, "\t"), .nextFocus)
+        XCTAssertEqual(command(MenuNavigation.Key.tab, "\t", .shift), .previousFocus)
+        // Tab leaves the filter too.
+        XCTAssertEqual(command(MenuNavigation.Key.tab, "\t", filterFocused: true), .nextFocus)
+    }
+
+    /// Regression: Space used to be treated as typing and always landed in the filter.
+    func testSpaceActivatesUnlessTypingInTheFilter() {
+        XCTAssertEqual(command(MenuNavigation.Key.space, " "), .activate)
+        XCTAssertNil(command(MenuNavigation.Key.space, " ", filterFocused: true))
+        XCTAssertNil(command(MenuNavigation.Key.space, " ", .shift))
+    }
+
+    func testLeftRightStepUnlessTypingInTheFilter() {
+        XCTAssertEqual(command(MenuNavigation.Key.leftArrow), .moveLeft)
+        XCTAssertEqual(command(MenuNavigation.Key.rightArrow), .moveRight)
+        XCTAssertNil(command(MenuNavigation.Key.leftArrow, filterFocused: true))
+        XCTAssertNil(command(MenuNavigation.Key.rightArrow, filterFocused: true))
+    }
+
+    func testFocusOrderCoversEveryControl() {
+        let project = MenuRowID.project(UUID())
+        let listener = MenuRowID.listener("10:3000")
+        let rows = [
+            MenuNavigation.FocusRow(id: project, actions: [.open, .logs, .stop]),
+            MenuNavigation.FocusRow(id: listener, actions: [.open, .copyURL]),
+        ]
+        XCTAssertEqual(
+            MenuNavigation.focusOrder(rows: rows, showsFilter: true, showsShowMore: true, canStopAll: true),
+            [
+                .addServer, .settings, .filter,
+                .row(project), .action(project, .open), .action(project, .logs), .action(project, .stop),
+                .row(listener), .action(listener, .open), .action(listener, .copyURL),
+                .showMore, .footerAdd, .footerStopAll,
+            ]
+        )
+        XCTAssertEqual(
+            MenuNavigation.focusOrder(rows: [], showsFilter: false, showsShowMore: false, canStopAll: false),
+            [.addServer, .settings, .footerAdd]
+        )
+    }
+
+    func testAdvanceWraps() {
+        let order: [MenuFocus] = [.addServer, .settings, .footerAdd]
+        XCTAssertEqual(MenuNavigation.advance(nil, in: order, by: 1), .addServer)
+        XCTAssertEqual(MenuNavigation.advance(nil, in: order, by: -1), .footerAdd)
+        XCTAssertEqual(MenuNavigation.advance(.addServer, in: order, by: 1), .settings)
+        XCTAssertEqual(MenuNavigation.advance(.footerAdd, in: order, by: 1), .addServer)
+        XCTAssertEqual(MenuNavigation.advance(.addServer, in: order, by: -1), .footerAdd)
+        XCTAssertEqual(MenuNavigation.advance(.showMore, in: order, by: 1), .addServer)
+        XCTAssertNil(MenuNavigation.advance(.addServer, in: [], by: 1))
+    }
+
+    func testStepWithinARow() {
+        let row = MenuRowID.project(UUID())
+        let actions: [RowAction] = [.open, .logs, .stop]
+        XCTAssertEqual(MenuNavigation.step(.row(row), actions: actions, by: 1), .action(row, .open))
+        XCTAssertEqual(MenuNavigation.step(.row(row), actions: actions, by: -1), .row(row))
+        XCTAssertEqual(MenuNavigation.step(.action(row, .open), actions: actions, by: 1), .action(row, .logs))
+        XCTAssertEqual(MenuNavigation.step(.action(row, .open), actions: actions, by: -1), .row(row))
+        XCTAssertEqual(MenuNavigation.step(.action(row, .stop), actions: actions, by: 1), .action(row, .stop))
+        XCTAssertEqual(MenuNavigation.step(.row(row), actions: [], by: 1), .row(row))
+    }
+
+    func testRecoverKeepsFocusNearby() {
+        let a = MenuRowID.project(UUID())
+        let b = MenuRowID.project(UUID())
+        let before: [MenuFocus] = [.addServer, .row(a), .action(a, .stop), .row(b), .footerAdd, .footerStopAll]
+        // Stopping a server removes its Stop button: focus falls back to the row.
+        let stopped: [MenuFocus] = [.addServer, .row(a), .action(a, .start), .row(b), .footerAdd]
+        XCTAssertEqual(MenuNavigation.recover(.action(a, .stop), previous: before, current: stopped), .row(a))
+        // Stop All disabled: the nearest surviving control before it.
+        XCTAssertEqual(MenuNavigation.recover(.footerStopAll, previous: before, current: stopped), .footerAdd)
+        // A row filtered away: the next surviving control after it.
+        let filtered: [MenuFocus] = [.addServer, .row(b), .footerAdd]
+        XCTAssertEqual(MenuNavigation.recover(.row(a), previous: before, current: filtered), .row(b))
+        XCTAssertEqual(MenuNavigation.recover(.row(b), previous: before, current: filtered), .row(b))
+        XCTAssertNil(MenuNavigation.recover(nil, previous: before, current: filtered))
+    }
+
+    func testRowActionsMatchTheButtons() {
+        let since = Date()
+        XCTAssertEqual(
+            RowAction.forProject(state: .running(managed: true, listeners: [], since: since), hasPort: true, hasLogs: true),
+            [.open, .logs, .stop]
+        )
+        // Started in Terminal: Restart in Runner, never Logs (Runner has no output for it).
+        XCTAssertEqual(
+            RowAction.forProject(state: .running(managed: false, listeners: [], since: since), hasPort: true, hasLogs: false),
+            [.open, .restart, .stop]
+        )
+        XCTAssertEqual(
+            RowAction.forProject(state: .running(managed: true, listeners: [], since: since), hasPort: false, hasLogs: true),
+            [.logs, .stop]
+        )
+        XCTAssertEqual(RowAction.forProject(state: .stopped, hasPort: true, hasLogs: false), [.logs, .start])
+        XCTAssertEqual(
+            RowAction.forProject(state: .crashed(exitCode: 1, at: since), hasPort: true, hasLogs: false), [.logs, .start]
+        )
+        XCTAssertEqual(RowAction.forProject(state: .needsReapproval, hasPort: true, hasLogs: false), [.review])
+        XCTAssertEqual(RowAction.forProject(state: .starting, hasPort: true, hasLogs: true), [.logs])
+        XCTAssertEqual(RowAction.forProject(state: .stopping, hasPort: true, hasLogs: false), [])
+        // Other listeners are view-only: never Stop.
+        XCTAssertEqual(
+            RowAction.forListener(hasFolder: true, canAddAsServer: true), [.open, .copyURL, .revealFolder, .addAsServer]
+        )
+        XCTAssertEqual(RowAction.forListener(hasFolder: false, canAddAsServer: false), [.open, .copyURL])
     }
 }

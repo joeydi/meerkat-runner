@@ -9,12 +9,23 @@ struct ServerRow: View {
     let row: ProjectRow
     /// Keyboard-selected in the menu: accent fill, white text, actions shown.
     var isSelected = false
+    /// The action button the keyboard is on, if any (DESIGN.md §5).
+    var focusedAction: RowAction?
     @Environment(ServerRegistry.self) private var registry
     @Environment(\.openWindow) private var openWindow
     @State private var isHovering = false
 
     private var actions: ProjectActions { ProjectActions(registry: registry, openWindow: openWindow) }
     private var showsActions: Bool { isHovering || isSelected }
+    /// The same list the menu's Tab order uses.
+    private var rowActions: [RowAction] { ProjectActions.rowActions(for: row, registry: registry) }
+
+    private func button(_ action: RowAction) -> some View {
+        let label = action == .logs && row.state.isCrashed ? "View Logs" : action.label
+        return IconButton(symbol: action.symbol, label: label, isFocused: focusedAction == action) {
+            actions.perform(action, on: row)
+        }
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -83,15 +94,7 @@ struct ServerRow: View {
         case .running(let managed, let listeners, _):
             HStack(spacing: 4) {
                 if showsActions {
-                    if row.project.port != nil {
-                        IconButton(symbol: "arrow.up.forward.square", label: "Open in Browser") { actions.open(row) }
-                    }
-                    if managed {
-                        IconButton(symbol: "text.alignleft", label: "Show Logs") { actions.showLogs(row) }
-                    } else {
-                        IconButton(symbol: "arrow.clockwise", label: "Restart in Runner") { actions.restart(row) }
-                    }
-                    IconButton(symbol: "stop.fill", label: "Stop") { actions.stop(row) }
+                    ForEach(rowActions, id: \.self) { button($0) }
                 } else {
                     if listeners.contains(where: \.isLANVisible) {
                         LANIndicator()
@@ -103,30 +106,30 @@ struct ServerRow: View {
             }
         case .starting, .stopping:
             HStack(spacing: 4) {
-                if showsActions, registry.managed[row.id] != nil {
-                    IconButton(symbol: "text.alignleft", label: "Show Logs") { actions.showLogs(row) }
+                if showsActions {
+                    ForEach(rowActions, id: \.self) { button($0) }
                 }
                 ProgressView().controlSize(.small)
             }
-        case .stopped:
+        case .stopped, .crashed:
             HStack(spacing: 4) {
-                if showsActions {
-                    IconButton(symbol: "text.alignleft", label: "Show Logs") { actions.showLogs(row) }
+                if case .crashed(let code, _) = row.state {
+                    Text("Exited (\(code))")
+                        .font(Tokens.Font.meta)
+                        .foregroundStyle(isSelected ? Color.white : Tokens.Colors.errorText)
                 }
-                IconButton(symbol: "play.fill", label: "Start") { actions.start(row) }
-            }
-        case .crashed(let code, _):
-            HStack(spacing: 4) {
-                Text("Exited (\(code))")
-                    .font(Tokens.Font.meta)
-                    .foregroundStyle(isSelected ? Color.white : Tokens.Colors.errorText)
-                IconButton(symbol: "text.alignleft", label: "View Logs") { actions.showLogs(row) }
-                IconButton(symbol: "play.fill", label: "Start") { actions.start(row) }
+                // Start (and a crashed row's logs) stay visible; a stopped row's logs appear on hover.
+                ForEach(rowActions, id: \.self) { action in
+                    if showsActions || action == .start || row.state.isCrashed {
+                        button(action)
+                    }
+                }
             }
         case .needsReapproval:
             Button("Review") { actions.review(row) }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .menuFocusRing(focusedAction == .review, cornerRadius: 6)
         }
     }
 
@@ -180,9 +183,12 @@ struct ServerRow: View {
 struct OtherListenerRow: View {
     let group: ListenerGroup
     var isSelected = false
+    var focusedAction: RowAction?
     @Environment(AddServerModel.self) private var addServerModel
     @Environment(\.openWindow) private var openWindow
     @State private var isHovering = false
+
+    private var actions: ListenerActions { ListenerActions(addServerModel: addServerModel, openWindow: openWindow) }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -199,13 +205,10 @@ struct OtherListenerRow: View {
             .lineLimit(1)
             Spacer(minLength: 8)
             if isHovering || isSelected {
-                IconButton(symbol: "arrow.up.forward.square", label: "Open in Browser") { open() }
-                IconButton(symbol: "doc.on.doc", label: "Copy URL") { copyURL() }
-                if group.cwd != nil {
-                    IconButton(symbol: "folder", label: "Reveal Folder") { revealFolder() }
-                }
-                if canAddAsServer {
-                    IconButton(symbol: "plus.square", label: "Add as Server…") { addAsServer() }
+                ForEach(ListenerActions.rowActions(for: group), id: \.self) { action in
+                    IconButton(symbol: action.symbol, label: action.label, isFocused: focusedAction == action) {
+                        actions.perform(action, on: group)
+                    }
                 }
             } else if group.isLANVisible {
                 LANIndicator()
@@ -222,24 +225,24 @@ struct OtherListenerRow: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .contextMenu {
-            Button("Open in Browser") { open() }
-            Button("Copy URL") { copyURL() }
+            Button("Open in Browser") { actions.perform(.open, on: group) }
+            Button("Copy URL") { actions.perform(.copyURL, on: group) }
             if group.cwd != nil {
-                Button("Reveal in Finder") { revealFolder() }
+                Button("Reveal in Finder") { actions.perform(.revealFolder, on: group) }
             }
-            if canAddAsServer {
-                Button("Add as Server…") { addAsServer() }
+            if ListenerActions.canAddAsServer(group) {
+                Button("Add as Server…") { actions.perform(.addAsServer, on: group) }
             }
             Divider()
-            Button("Copy PID") { copy(String(group.pid)) }
+            Button("Copy PID") { URLActions.copy(text: String(group.pid)) }
         }
         .help("PID \(group.pid)")
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityAction(named: "Open in Browser") { open() }
-        .accessibilityAction(named: "Copy URL") { copyURL() }
-        .accessibilityAction(named: "Add as Server") { if canAddAsServer { addAsServer() } }
+        .accessibilityAction(named: "Open in Browser") { actions.perform(.open, on: group) }
+        .accessibilityAction(named: "Copy URL") { actions.perform(.copyURL, on: group) }
+        .accessibilityAction(named: "Add as Server") { actions.perform(.addAsServer, on: group) }
     }
 
     private var accessibilityText: String {
@@ -247,42 +250,5 @@ struct OtherListenerRow: View {
         if let cwd = group.cwd { text += ", in \(Format.abbreviatingHome(cwd))" }
         if group.isLANVisible { text += ", visible on the local network" }
         return text
-    }
-
-    /// Only offer for a real project-looking folder: not `/` or the home folder itself.
-    private var canAddAsServer: Bool {
-        guard let cwd = group.cwd else { return false }
-        return cwd != "/" && cwd != NSHomeDirectory()
-    }
-
-    /// Pre-fills the Add window with the listener's working directory (AGENTS.md §9.1).
-    private func addAsServer() {
-        guard let cwd = group.cwd else { return }
-        let listener = group.primary
-        let running = AddServerModel.RunningServer(
-            argv: listener.argv,
-            port: group.port,
-            framework: ListenerClassifier.classify(executablePath: listener.executablePath, argv: listener.argv)
-        )
-        addServerModel.load(URL(fileURLWithPath: cwd, isDirectory: true), running: running)
-        NSApp.activate()
-        openWindow(id: WindowID.addServer)
-    }
-
-    private func open() {
-        URLActions.open(port: group.port)
-    }
-
-    private func copyURL() {
-        URLActions.copy(port: group.port)
-    }
-
-    private func revealFolder() {
-        guard let cwd = group.cwd else { return }
-        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: cwd)
-    }
-
-    private func copy(_ string: String) {
-        URLActions.copy(text: string)
     }
 }

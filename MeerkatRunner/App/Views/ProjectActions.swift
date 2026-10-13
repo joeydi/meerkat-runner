@@ -1,6 +1,7 @@
 import AppKit
 import Models
 import Registry
+import Scanner
 import SwiftUI
 
 /// The actions a project row offers, shared by its buttons, context menu, VoiceOver actions and the
@@ -17,6 +18,27 @@ struct ProjectActions {
         case .stopped, .crashed: start(row)
         case .needsReapproval: review(row)
         case .starting, .stopping: break
+        }
+    }
+
+    /// The row's action buttons, in order (shared by `ServerRow` and the menu's Tab order).
+    static func rowActions(for row: ProjectRow, registry: ServerRegistry) -> [RowAction] {
+        RowAction.forProject(
+            state: row.state, hasPort: row.project.port != nil, hasLogs: registry.managed[row.id] != nil
+        )
+    }
+
+    func perform(_ action: RowAction, on row: ProjectRow) {
+        switch action {
+        case .open: open(row)
+        case .logs: showLogs(row)
+        case .restart: restart(row)
+        case .stop: stop(row)
+        case .start: start(row)
+        case .review: review(row)
+        case .copyURL: copyURL(row)
+        case .revealFolder: revealInFinder(row)
+        case .addAsServer: break
         }
     }
 
@@ -112,6 +134,59 @@ struct ProjectActions {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let id = row.project.id
         Task { try? await registry.remove(projectID: id) }
+    }
+}
+
+/// The actions an other-listener row offers. View-only: there is no Stop (AGENTS.md §1).
+@MainActor
+struct ListenerActions {
+    let addServerModel: AddServerModel
+    let openWindow: OpenWindowAction
+
+    static func rowActions(for group: ListenerGroup) -> [RowAction] {
+        RowAction.forListener(hasFolder: group.cwd != nil, canAddAsServer: canAddAsServer(group))
+    }
+
+    /// Only offer for a real project-looking folder: not `/` or the home folder itself.
+    static func canAddAsServer(_ group: ListenerGroup) -> Bool {
+        guard let cwd = group.cwd else { return false }
+        return cwd != "/" && cwd != NSHomeDirectory()
+    }
+
+    func perform(_ action: RowAction, on group: ListenerGroup) {
+        switch action {
+        case .open:
+            URLActions.open(port: group.port)
+        case .copyURL:
+            URLActions.copy(port: group.port)
+        case .revealFolder:
+            if let cwd = group.cwd { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: cwd) }
+        case .addAsServer:
+            addAsServer(group)
+        case .logs, .restart, .stop, .start, .review:
+            break
+        }
+    }
+
+    /// Pre-fills the Add window with the listener's working directory (AGENTS.md §9.1).
+    private func addAsServer(_ group: ListenerGroup) {
+        guard Self.canAddAsServer(group), let cwd = group.cwd else { return }
+        let listener = group.primary
+        let running = AddServerModel.RunningServer(
+            argv: listener.argv,
+            port: group.port,
+            framework: ListenerClassifier.classify(executablePath: listener.executablePath, argv: listener.argv)
+        )
+        addServerModel.load(URL(fileURLWithPath: cwd, isDirectory: true), running: running)
+        NSApp.activate()
+        openWindow(id: WindowID.addServer)
+    }
+}
+
+extension ServerState {
+    var isCrashed: Bool {
+        if case .crashed = self { return true }
+        return false
     }
 }
 

@@ -155,6 +155,8 @@ struct IconButton: View {
     let symbol: String
     let label: String
     var size: Size = .row
+    /// Keyboard focus from the menu's own focus model (DESIGN.md §5).
+    var isFocused = false
     let action: () -> Void
 
     @Environment(\.isRowSelected) private var isRowSelected
@@ -172,11 +174,37 @@ struct IconButton: View {
                 .foregroundStyle(isRowSelected ? Color.white : Color.primary)
                 .frame(width: size == .row ? 26 : 28, height: size == .row ? 26 : 28)
                 .background(background, in: RoundedRectangle(cornerRadius: 6))
+                .menuFocusRing(isFocused, cornerRadius: 6)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(label)
         .accessibilityLabel(label)
+        .accessibilityAddTraits(isFocused ? .isSelected : [])
+    }
+}
+
+extension View {
+    /// The menu's keyboard focus ring: accent, or white on an accent-filled (selected) row. The menu
+    /// draws its own because plain buttons only join the system focus loop when the user has turned
+    /// on Keyboard navigation, and even then Return doesn't press them.
+    func menuFocusRing(_ isFocused: Bool, cornerRadius: CGFloat) -> some View {
+        modifier(MenuFocusRing(isFocused: isFocused, cornerRadius: cornerRadius))
+    }
+}
+
+private struct MenuFocusRing: ViewModifier {
+    let isFocused: Bool
+    let cornerRadius: CGFloat
+    @Environment(\.isRowSelected) private var isRowSelected
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if isFocused {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(isRowSelected ? Color.white : Color.accentColor, lineWidth: 2)
+            }
+        }
     }
 }
 
