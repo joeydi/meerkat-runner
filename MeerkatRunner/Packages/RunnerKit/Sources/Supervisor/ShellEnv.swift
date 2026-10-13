@@ -133,7 +133,7 @@ private extension FileHandle {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 65_536)
         while true {
-            let count = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
+            let count = buffer.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
             guard count > 0 else { break }
             data.append(contentsOf: buffer[0..<count])
         }
