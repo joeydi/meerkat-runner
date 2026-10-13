@@ -408,7 +408,7 @@ Footer: "Add server from folder… ⌘N", "Stop all managed servers", and a quie
 
 Empty state (no projects, no listeners): one line explaining what the app does + "Add server from folder…" button + a quiet line "Monitor these sites once they're live → Meerkat" linking to the waitlist.
 
-Keyboard: arrow keys move selection, Return opens in browser, ⌘. stops, ⌘R restarts, ⌘L logs, ⌘N add.
+Keyboard: arrow keys move selection, Tab / Shift-Tab move through every control (header, rows and their actions, Show more, footer), Return or Space presses the focused control (on a row: opens in browser), ⌘. stops, ⌘R restarts, ⌘L logs, ⌘N add.
 
 ### 9.2 Add server sheet
 

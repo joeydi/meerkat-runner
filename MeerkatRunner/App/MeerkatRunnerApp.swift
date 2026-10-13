@@ -73,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let crashNotifier = CrashNotifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Hosting unit tests: don't scan, touch the Keychain or capture the shell environment.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         crashNotifier.install()
         registry.onCrash = { [crashNotifier] project, exitCode in
             crashNotifier.post(project: project, exitCode: exitCode)

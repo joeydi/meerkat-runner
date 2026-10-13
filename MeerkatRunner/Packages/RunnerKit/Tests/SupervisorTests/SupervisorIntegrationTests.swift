@@ -100,10 +100,15 @@ final class SupervisorIntegrationTests: XCTestCase {
         let supervisor = ProcessSupervisor()
         let id = UUID()
         _ = try await supervisor.spawn(spec(["/bin/sh", "-c", "test -t 1 && echo IS_TTY; stty size; sleep 5"], projectID: id))
-        let ok = await eventually { await output(supervisor, id).contains("IS_TTY") }
+        // Wait for both lines: `stty size` prints after the tty check, so it can arrive a moment later.
+        let ok = await eventually {
+            let text = await output(supervisor, id)
+            return text.contains("IS_TTY") && text.contains("40 120")
+        }
         let text = await output(supervisor, id)
         XCTAssertTrue(ok, text)
-        XCTAssertTrue(text.contains("40 120"), text)
+        XCTAssertTrue(text.contains("IS_TTY"), text)
+        XCTAssertTrue(text.contains("40 120"), "PTY window size should be 120x40: \(text)")
         try await supervisor.stop(projectID: id)
     }
 

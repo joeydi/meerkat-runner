@@ -41,23 +41,39 @@ struct StatusDot: View {
     }
 
     let kind: Kind
+    @Environment(\.isRowSelected) private var isRowSelected
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulsing = false
 
     var body: some View {
         Group {
-            switch kind {
-            case .running:
-                Circle().fill(Tokens.Colors.statusRunning)
-            case .transitioning:
-                // TODO: 1 s opacity pulse, off with Reduce Motion.
-                Circle().fill(Tokens.Colors.statusRunning.opacity(0.5))
-            case .stopped:
-                Circle().strokeBorder(.tertiary, lineWidth: 1.5)
-            case .needsApproval:
-                Circle().fill(Tokens.Colors.warningText)
-            case .crashed:
-                Circle().fill(Tokens.Colors.errorText)
-            case .other:
-                Circle().fill(.tertiary)
+            if isRowSelected {
+                // On the accent fill the dot is white (hollow stays hollow).
+                if kind == .stopped {
+                    Circle().strokeBorder(Color.white, lineWidth: 1.5)
+                } else {
+                    Circle().fill(Color.white)
+                }
+            } else {
+                switch kind {
+                case .running:
+                    Circle().fill(Tokens.Colors.statusRunning)
+                case .transitioning:
+                    // 1 s opacity pulse; static at 50% with Reduce Motion.
+                    Circle()
+                        .fill(Tokens.Colors.statusRunning)
+                        .opacity(reduceMotion ? 0.5 : (pulsing ? 0.25 : 0.75))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 1).repeatForever(autoreverses: true), value: pulsing)
+                        .onAppear { pulsing = true }
+                case .stopped:
+                    Circle().strokeBorder(.tertiary, lineWidth: 1.5)
+                case .needsApproval:
+                    Circle().fill(Tokens.Colors.warningText)
+                case .crashed:
+                    Circle().fill(Tokens.Colors.errorText)
+                case .other:
+                    Circle().fill(.tertiary)
+                }
             }
         }
         .frame(width: 8, height: 8)
@@ -121,11 +137,12 @@ struct Badge: View {
 /// with a tooltip, so it takes less room than a text badge (DESIGN.md §2.4).
 struct LANIndicator: View {
     static let tooltip = "Listening on all network interfaces. Other devices on your network can reach it."
+    @Environment(\.isRowSelected) private var isRowSelected
 
     var body: some View {
         Image(systemName: "globe")
             .font(.system(size: 12))
-            .foregroundStyle(Tokens.Colors.warningText)
+            .foregroundStyle(isRowSelected ? Color.white : Tokens.Colors.warningText)
             .help(Self.tooltip)
             .accessibilityLabel("Visible on the local network")
     }
@@ -138,19 +155,56 @@ struct IconButton: View {
     let symbol: String
     let label: String
     var size: Size = .row
+    /// Keyboard focus from the menu's own focus model (DESIGN.md §5).
+    var isFocused = false
     let action: () -> Void
+
+    @Environment(\.isRowSelected) private var isRowSelected
+
+    private var background: Color {
+        guard size == .row else { return .clear }
+        // On a selected (accent) row: white glyph on white at 18% (DESIGN.md §3 `IconButton`).
+        return isRowSelected ? Color.white.opacity(0.18) : Tokens.Colors.fillControl
+    }
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size == .row ? 12 : 15))
+                .foregroundStyle(isRowSelected ? Color.white : Color.primary)
                 .frame(width: size == .row ? 26 : 28, height: size == .row ? 26 : 28)
-                .background(size == .row ? Tokens.Colors.fillControl : .clear, in: RoundedRectangle(cornerRadius: 6))
+                .background(background, in: RoundedRectangle(cornerRadius: 6))
+                .menuFocusRing(isFocused, cornerRadius: 6)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(label)
         .accessibilityLabel(label)
+        .accessibilityAddTraits(isFocused ? .isSelected : [])
+    }
+}
+
+extension View {
+    /// The menu's keyboard focus ring: accent, or white on an accent-filled (selected) row. The menu
+    /// draws its own because plain buttons only join the system focus loop when the user has turned
+    /// on Keyboard navigation, and even then Return doesn't press them.
+    func menuFocusRing(_ isFocused: Bool, cornerRadius: CGFloat) -> some View {
+        modifier(MenuFocusRing(isFocused: isFocused, cornerRadius: cornerRadius))
+    }
+}
+
+private struct MenuFocusRing: ViewModifier {
+    let isFocused: Bool
+    let cornerRadius: CGFloat
+    @Environment(\.isRowSelected) private var isRowSelected
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if isFocused {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(isRowSelected ? Color.white : Color.accentColor, lineWidth: 2)
+            }
+        }
     }
 }
 
@@ -206,6 +260,8 @@ struct DiffView: View {
 
     let title: String
     let lines: [Line]
+    /// Increase Contrast doubles card borders (DESIGN.md §6).
+    @Environment(\.colorSchemeContrast) private var contrast
     /// Measured height of the lines. A bare ScrollView has no ideal height, so in a window sized to
     /// its content it would collapse to zero.
     @State private var contentHeight: CGFloat = 0
@@ -230,7 +286,10 @@ struct DiffView: View {
             .frame(height: min(contentHeight, 220))
         }
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: contrast == .increased ? 2 : 1)
+        )
     }
 
     @ViewBuilder
